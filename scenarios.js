@@ -23,11 +23,23 @@ window.FA_SCENARIOS = (function () {
     report: '/fieldagent/exports/create-a-report',
     rx: '/fieldagent/exports/zone-rx-prescriptions',
     download: '/fieldagent/exports/download-and-export-data',
+    elev: '/fieldagent/analytics/elevation-mosaic',
+    qtm: '/fieldagent/imagery/quicktiles-and-mosaics',
+    edit: '/fieldagent/fields/edit-or-delete-a-field',
+    seasons: '/fieldagent/fields/crop-seasons-and-field-activities',
+    share: '/fieldagent/fields/share-a-field',
+    analytics: '/fieldagent/ordering/order-analytics',
+    create: '/fieldagent/fields/create-a-field',
+    standcount: '/fieldagent/analytics/stand-count',
+    tassel: '/fieldagent/analytics/tassel-count',
+    orders: '/fieldagent/ordering/orders-and-flight-tasks',
   };
   const back = { text: 'Click the <b>back arrow</b> at the top of the panel to return to the field view.', target: '[data-act="back"]', event: 'view_changed', match: d => d.view === 'field' };
   const openAdd = { text: 'Open <b>Add Map Layers</b>: click the layers icon in the <b>Map Layers</b> card.', target: '[data-act="add"]', event: 'add_layers_opened' };
   const ndvi = { kind: 'drone', survey: MS, product: 'ms', viz: 'ndvi' };
   const pickMenu = (menuSel, optSel) => (app, root) => { const b = root.querySelector(menuSel); if (!b) return; b.click(); setTimeout(() => { const o = root.querySelector(optSel); if (o) o.click(); }, 180); };
+  const typeInto = (root, sel, text) => { const el = root.querySelector(sel); if (!el) return false; el.focus(); el.value = text; el.dispatchEvent(new Event('input', { bubbles: true })); return true; };
+  const isoToday = (offsetDays = 0) => { const d = new Date(); d.setDate(d.getDate() + offsetDays); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
   const S = {};
 
@@ -175,6 +187,80 @@ window.FA_SCENARIOS = (function () {
       { text: 'Scroll to <b>Download Files</b> and click the download icon next to <b>TIF File</b>. That is the GeoTIFF of the mosaic for GIS software.', target: '[data-act="download"][data-what="tif"]', event: 'download_attempt', match: d => d.what === 'tif' },
     ],
     finish: { text: 'Zones download from the Zones card, layer files from the layer’s details. Analytics layers add GeoJSON, CSV and Shapefile downloads of their sample points.', links: [{ label: 'Download and export data', path: PAGE.download }, { label: 'Zone Rx prescriptions', path: PAGE.rx }] },
+  };
+
+  S['elevation'] = {
+    id: 'elevation', title: 'Read the Elevation Mosaic', page: PAGE.elev, field: F, seedLayers: false,
+    steps: [
+      openAdd,
+      { text: 'Under the <b>Mavic 3 Multispectral</b> flight of <b>09-04-2024</b>, turn on <b>Elevation Mosaic</b>.', target: `[data-act="pick"][data-survey="${MS}"][data-product="elev"]`, event: 'layer_added', match: d => d.product === 'elev' },
+      back,
+      { text: 'Click the <b>Elevation Mosaic</b> layer name to open its details. The panel shows the elevation range of the surface model.', target: '.layer-row[data-index="0"]', event: 'layer_details_opened' },
+      { text: 'Drag the <b>bins</b> slider to 5. Each color band now covers about 1.5 m of elevation.', target: 'input[data-act="bins"]', event: 'bins_changed', demo: { value: 5 } },
+      { text: 'Drag the <b>right range handle</b> to the left. Only the lowest ground stays colored — the spots that pond after rain.', target: 'input[data-act="rmax"]', event: 'range_changed', match: d => d.end === 'max', demo: { value: 269.5 } },
+      { text: 'Lower <b>Opacity</b> to about 60% to see the RGB mosaic underneath and relate the low ground to what grows there.', target: 'input[data-act="opacity"]', event: 'opacity_changed', demo: { value: 60 } },
+    ],
+    finish: { text: 'The Elevation Mosaic is a digital surface model from the same photos as the RGB mosaic. Colorize it like any index layer; draw a zone over a low area to read its statistics.', links: [{ label: 'Elevation Mosaic', path: PAGE.elev }, { label: 'Zone Rx prescriptions', path: PAGE.rx }] },
+  };
+
+  S['quicktile'] = {
+    id: 'quicktile', title: 'QuickTile or stitched mosaic', page: PAGE.qtm, field: F, seedLayers: false,
+    steps: [
+      openAdd,
+      { text: 'Under the <b>09-04-2024</b> flight, turn on <b>QuickTile RGB (DJI)</b>. FieldAgent built it automatically when the photos were imported.', target: `[data-act="pick"][data-survey="${MS}"][data-product="qt_rgb"]`, event: 'layer_added', match: d => d.product === 'qt_rgb' },
+      { text: 'Now turn on <b>RGB Mosaic</b> for the same flight — the stitched mosaic that was ordered from the survey.', target: `[data-act="pick"][data-survey="${MS}"][data-product="rgb"]`, event: 'layer_added', match: d => d.product === 'rgb' },
+      back,
+      { text: 'Hover the <b>RGB Mosaic</b> row and click the <b>eye</b> to hide it. The QuickTile underneath shows each photo placed where it was taken, seams and all. Click again to compare.', target: '.layer-row[data-index="0"] [data-act="toggle"]', highlight: '.layer-row[data-index="0"]', event: 'layer_toggled', note: 'Zoom into the map to see the difference along the seams.' },
+    ],
+    finish: { text: 'QuickTiles are ready minutes after an import and are good for a first look and for scouting. Stitched mosaics take hours but line up every photo, can be colorized by index, and can be downloaded as one GeoTIFF.', links: [{ label: 'QuickTiles and mosaics', path: PAGE.qtm }, { label: 'Order a mosaic', path: PAGE.order }] },
+  };
+
+  S['edit-field'] = {
+    id: 'edit-field', title: 'Edit a field’s details', page: PAGE.edit, field: F, seedLayers: true,
+    steps: [
+      { text: 'Click the <b>pencil</b> in the <b>Field Details</b> card. The Edit Field form opens and the drawing tools appear at the right edge of the map.', target: '[data-blocked="Editing field details"]', event: 'field_edit_opened' },
+      { text: 'Type a grower name in <b>Grower</b>.', target: 'input[data-act="ef-grower"]', event: 'field_edit_changed', match: d => d.key === 'grower' && d.value.length > 0, demo: { text: 'Sentera Demo Farms' } },
+      { text: 'Type a farm name in <b>Farm</b>. The same form holds the address and postal code.', target: 'input[data-act="ef-farm"]', event: 'field_edit_changed', match: d => d.key === 'farm' && d.value.length > 0, demo: { text: 'Home Farm' } },
+      { text: 'The tools on the right edge of the map change the <b>boundary</b>: <b>Edit</b> drags the red points, <b>Cut</b> removes an area, the shape tools add to it.', target: (app, root) => root.querySelector('.draw-tools'), info: true },
+      { text: 'Click <b>SAVE</b>. The Field Details card shows the new grower and farm.', target: '[data-act="ef-save"]', event: 'field_saved' },
+    ],
+    finish: { text: 'Changes made in FieldAgent Web appear in FieldAgent Desktop after its next sync. DELETE at the bottom of the form removes the field for everyone in the organization — this demo stops before that.', links: [{ label: 'Edit or delete a field', path: PAGE.edit }, { label: 'Create a field', path: PAGE.create }] },
+  };
+
+  S['crop-season'] = {
+    id: 'crop-season', title: 'Add a crop season and a planting activity', page: PAGE.seasons, field: F, seedLayers: true,
+    steps: [
+      { text: 'Click the <b>plus</b> icon in the <b>Field Activities</b> card at the bottom of the panel.', target: '[data-act="x-activity"]', event: 'activity_opened' },
+      { text: 'Open <b>Select Crop Season</b> and choose <b>Add Crop Season</b>.', target: '[data-act="menu"][data-menu="x-season"]', event: 'season_selected', match: d => d.season === 'new', showMe: pickMenu('[data-act="menu"][data-menu="x-season"]', '[data-act="x-season"][data-val="new"]') },
+      { text: 'Choose the <b>Crop Type</b>. The list has Alfalfa, Barley, Canola, Corn, Cotton, Potato, Rice, Soybean, Sugar Beet, Wheat and Other.', target: '[data-act="menu"][data-menu="x-croptype"]', event: 'season_type_changed', showMe: pickMenu('[data-act="menu"][data-menu="x-croptype"]', '[data-act="x-croptype"][data-val="Corn"]') },
+      { text: 'Name the season, for example <b>Spring Corn</b>, and enter its <b>Start Date</b>.', target: 'input[data-act="x-sname"]', event: 'season_name_changed', match: d => d.name.trim().length > 2, showMe: (app, root) => { typeInto(root, 'input[data-act="x-sstart"]', isoToday(-120)); typeInto(root, 'input[data-act="x-sname"]', 'Spring Corn'); } },
+      { text: 'Under <b>New Field Activity</b>, set <b>Activity Type</b> to <b>Plant</b>. The form changes with the type.', target: '[data-act="menu"][data-menu="x-atype"]', event: 'activity_type_changed', match: d => d.type === 'Plant', showMe: pickMenu('[data-act="menu"][data-menu="x-atype"]', '[data-act="x-atype"][data-val="Plant"]') },
+      { text: 'Enter the <b>Applied At</b> date and the <b>Average Rate</b> from the planter, then click <b>SUBMIT</b>.', target: '[data-act="x-asubmit"]', event: 'activity_added', note: 'Show me enters a planting date and 32,000 seeds/acre before submitting.', showMe: (app, root) => { typeInto(root, 'input[data-act="x-applied"]', isoToday(-118)); typeInto(root, 'input[data-act="x-rate"]', '32000'); typeInto(root, 'input[data-act="x-spacing"]', '30'); setTimeout(() => { const b = root.querySelector('[data-act="x-asubmit"]'); if (b && !b.disabled) b.click(); }, 250); } },
+    ],
+    finish: { text: 'The activity now shows in Field Activities under its season. With a Plant activity recorded, FieldAgent sends growth-stage notifications through the season, and a Kernel Count activity is what turns a tassel count into a yield estimate.', links: [{ label: 'Crop seasons and field activities', path: PAGE.seasons }, { label: 'Tassel Count and yield estimate', path: PAGE.tassel }] },
+  };
+
+  S['share-field'] = {
+    id: 'share-field', title: 'Share a field', page: PAGE.share, field: F, seedLayers: true,
+    steps: [
+      { text: 'Click the <b>share</b> icon to the right of the field name at the top of the panel.', target: '.panel-head [data-blocked="Sharing"]', event: 'share_opened' },
+      { text: 'Enter the recipient’s <b>email address</b>. They do not need to be in your organization.', target: 'input[data-act="x-email"]', event: 'share_email_changed', match: d => d.valid, demo: { text: 'agronomist@example.com' } },
+      { text: 'Click <b>SHARE</b>.', target: '[data-act="x-share"]', event: 'share_attempt', note: 'No email is sent from this demo.' },
+    ],
+    finish: { text: 'A FieldAgent user finds shared fields under “Fields Shared With Me” in the organization list; anyone else opens the field from the link in the email. Shares made from FieldAgent Web last 365 days and are revoked from FieldAgent Desktop.', links: [{ label: 'Share a field', path: PAGE.share }, { label: 'Organizations and Fields Shared With Me', path: '/fieldagent/account/organizations-and-shared-fields' }] },
+  };
+
+  S['order-analytics'] = {
+    id: 'order-analytics', title: 'Order a stand count', page: PAGE.analytics, field: F, seedLayers: true,
+    steps: [
+      { text: 'Click <b>ORDER ANALYTICS</b>.', target: '[data-blocked="Order Analytics"]', event: 'analytics_opened' },
+      { text: 'In <b>Select Analytics Type</b>, choose <b>Field Scale Stand Count</b>. The list shows the products your plan includes.', target: '[data-act="menu"][data-menu="x-antype"]', event: 'analytics_type_selected', match: d => d.type === 'stand', showMe: pickMenu('[data-act="menu"][data-menu="x-antype"]', '[data-act="x-antype"][data-val="stand"]') },
+      { text: 'In <b>Select Survey</b>, choose the flight. The panel reports how many photos it holds.', target: '[data-act="menu"][data-menu="x-asurvey"]', event: 'analytics_survey_selected', showMe: pickMenu('[data-act="menu"][data-menu="x-asurvey"]', `[data-act="x-asurvey"][data-val="${MS}"]`) },
+      { text: 'Set <b>Crop Type</b> to <b>Corn</b>.', target: '[data-act="menu"][data-menu="x-crop"]', event: 'analytics_details_changed', match: d => d.key === 'crop', showMe: pickMenu('[data-act="menu"][data-menu="x-crop"]', '[data-act="x-crop"][data-val="Corn"]') },
+      { text: 'Enter the <b>Seeding Rate</b> and <b>Row Spacing</b> from the planter. FieldAgent compares the counted stand with what was planted.', target: 'input[data-act="x-orate"]', event: 'analytics_details_changed', match: d => d.key === 'spacing' && d.value.length > 0, showMe: (app, root) => { typeInto(root, 'input[data-act="x-orate"]', '32000'); setTimeout(() => typeInto(root, 'input[data-act="x-ospacing"]', '30'), 200); } },
+      { text: 'Check the <b>Order Summary</b> and click <b>SUBMIT</b>.', target: '[data-act="x-osubmit"]', event: 'analytics_submit_attempt', note: 'In this demo the order is not placed. In FieldAgent you receive an email when the results are ready.' },
+    ],
+    finish: { text: 'Analytics are ordered from a survey flown to the product’s specification — usually a low-altitude spot-scout pattern. Results arrive as map layers and downloadable data.', links: [{ label: 'Order analytics', path: PAGE.analytics }, { label: 'Stand Count', path: PAGE.standcount }] },
   };
 
   return S;

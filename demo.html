@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Condensed:wght@700&display=swap">
 <link rel="stylesheet" href="fa-style.css">
 <link rel="stylesheet" href="fa-tour.css">
+<link rel="stylesheet" href="fa-ext.css">
 <style>
   html, body { margin: 0; height: 100%; background: #000; color: #fff; font: 14px Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif; color-scheme: dark; }
   body { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; overflow: hidden; }
@@ -95,6 +96,7 @@
 <div id="fa-root" class="fa-app"><div class="demo-fallback">Loading the demo…</div></div>
 <script src="data/fa-data.js"></script>
 <script src="fa-engine.js"></script>
+<script src="fa-ext.js"></script>
 <script src="fa-tour.js"></script>
 <script src="scenarios.js"></script>
 <script>
@@ -129,12 +131,13 @@
         onEvent: (name, detail) => { if (tour) tour.onEvent(name, detail); },
       });
       window.FA_APP = app;
+      if (window.FieldAgentExt) FieldAgentExt.install(app, window.FA_DATA);
     } else {
       // switching scenarios: the tour's own reset re-seeds the field according to the new scenario
       app.opts.seedLayers = sc.seedLayers !== false;
       const fid = sc.field || app.state.fid;
       app.state.seeded[fid] = false; app.state.layersByField[fid] = []; app.state.zonesOn[fid] = [];
-      app.state.sources = { surveys: true, satellite: false }; app.state.photo = null; app.state.menu = null; app.openField(fid, false);
+      app.state.sources = { surveys: true, satellite: false }; app.state.photo = null; app.state.menu = null; if (app.ext) app.ext.reset(fid); app.openField(fid, false);
     }
     // the engine opens the first field once its base imagery has decoded; the tour's own setup must run after that
     Promise.resolve(app.ready).then(() => {

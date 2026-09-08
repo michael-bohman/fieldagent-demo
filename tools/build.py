@@ -16,6 +16,8 @@ tpl = (root / 'demo.template.html').read_text(encoding='utf-8')
 sprite = (root / 'sprite.svg.html').read_text(encoding='utf-8')
 css = (root / 'fa-style.css').read_text(encoding='utf-8')
 tour_css = (root / 'fa-tour.css').read_text(encoding='utf-8')
+ext_css = (root / 'fa-ext.css').read_text(encoding='utf-8')
+ext_js = (root / 'fa-ext.js').read_text(encoding='utf-8')
 engine = (root / 'fa-engine.js').read_text(encoding='utf-8')
 tour = (root / 'fa-tour.js').read_text(encoding='utf-8')
 scen = (root / 'scenarios.js').read_text(encoding='utf-8')
@@ -23,9 +25,9 @@ data_js = (root / 'data/fa-data.js').read_text(encoding='utf-8')
 data = json.loads(data_js[len('window.FA_DATA = '):-2])
 
 # ---- hosted demo.html ----
-hosted = tpl.replace('<!--STYLES-->', '<link rel="stylesheet" href="fa-style.css">\n<link rel="stylesheet" href="fa-tour.css">')
+hosted = tpl.replace('<!--STYLES-->', '<link rel="stylesheet" href="fa-style.css">\n<link rel="stylesheet" href="fa-tour.css">\n<link rel="stylesheet" href="fa-ext.css">')
 hosted = hosted.replace('<!--SPRITE-->', sprite)
-hosted = hosted.replace('<!--SCRIPTS-->', '<script src="data/fa-data.js"></script>\n<script src="fa-engine.js"></script>\n<script src="fa-tour.js"></script>\n<script src="scenarios.js"></script>')
+hosted = hosted.replace('<!--SCRIPTS-->', '<script src="data/fa-data.js"></script>\n<script src="fa-engine.js"></script>\n<script src="fa-ext.js"></script>\n<script src="fa-tour.js"></script>\n<script src="scenarios.js"></script>')
 (root / 'demo.html').write_text(hosted, encoding='utf-8')
 
 # ---- single-file preview: field f1 only, the three Mavic flights, satellite, near basemaps ----
@@ -50,9 +52,9 @@ for k, rel in data['img'].items():
 slim['img'] = inline_img
 slim['dims'] = {k: v for k, v in slim['dims'].items() if k in inline_img}
 slim_js = 'window.FA_DATA = ' + json.dumps(slim, separators=(',', ':')) + ';'
-single = tpl.replace('<!--STYLES-->', f'<style>\n{css}\n{tour_css}\n</style>')
+single = tpl.replace('<!--STYLES-->', f'<style>\n{css}\n{tour_css}\n{ext_css}\n</style>')
 single = single.replace('<!--SPRITE-->', sprite)
-single = single.replace('<!--SCRIPTS-->', f'<script>{slim_js}</script>\n<script>{engine}</script>\n<script>{tour}</script>\n<script>{scen}</script>')
+single = single.replace('<!--SCRIPTS-->', f'<script>{slim_js}</script>\n<script>{engine}</script>\n<script>{ext_js}</script>\n<script>{tour}</script>\n<script>{scen}</script>')
 (outdir / 'fa-demos-preview.html').write_text(single, encoding='utf-8')
 print(f'preview: {len(inline_img)} images, {total/1e6:.2f} MB raw, file {len(single)/1e6:.2f} MB')
 

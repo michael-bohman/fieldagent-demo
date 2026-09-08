@@ -92,7 +92,7 @@ window.FieldAgentTour = (function () {
     function frame() {
       if (destroyed) return;
       raf = requestAnimationFrame(frame);
-      root.classList.toggle('tour-modal', !!app.state.photo);
+      root.classList.toggle('tour-modal', !!app.state.photo); root.classList.toggle('tour-dialog', !!root.querySelector('.x-overlay'));
       const s = cur();
       if (finished || !s || !steps.length || card.classList.contains('hidden')) { spot.hidden = true; return; }
       const el = highlightEl(s);
@@ -159,7 +159,7 @@ window.FieldAgentTour = (function () {
     }
     function defaultReset() {
       const fid = scenario.field || app.state.fid;
-      app.state.seeded[fid] = false; app.state.layersByField[fid] = []; app.state.zonesOn[fid] = []; app.state.sources = { surveys: true, satellite: false }; app.state.photo = null;
+      app.state.seeded[fid] = false; app.state.layersByField[fid] = []; app.state.zonesOn[fid] = []; app.state.sources = { surveys: true, satellite: false }; app.state.photo = null; if (app.ext) app.ext.reset(fid);
       app.openField(fid, false); if (typeof scenario.setup === 'function') scenario.setup(app);
     }
 

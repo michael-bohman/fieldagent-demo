@@ -1,0 +1,29 @@
+/* Extension panels (Edit Field, Field Activities, Share, Order Analytics). Follows the engine's FieldAgent tokens. */
+.fa-app .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.fa-app .two-col .textfield, .fa-app .two-col .select { min-width: 0; }
+.fa-app .btn-wide.ghost { background: transparent; color: var(--fa-text-2); border: 1px solid var(--fa-line); }
+.fa-app .btn-wide.ghost:hover { color: var(--fa-text); border-color: rgba(255,255,255,.35); }
+.fa-app .ear-row { margin-top: 4px; }
+.fa-app .ear-label { display: block; font-size: 11px; color: var(--fa-text-2); letter-spacing: .04em; text-transform: uppercase; margin: 6px 0 -2px 6px; }
+.fa-app .season-row { padding: 6px 0 2px; border-top: 1px solid var(--fa-line); }
+.fa-app .season-row:first-child { border-top: 0; }
+.fa-app .season-head { display: flex; flex-direction: column; padding: 4px 6px 2px; }
+.fa-app .season-head b { font-size: 14px; font-weight: 500; color: var(--fa-text); }
+.fa-app .season-head span { font-size: 12px; color: var(--fa-text-2); }
+.fa-app .act-row { display: flex; gap: 10px; align-items: baseline; padding: 6px 6px 6px 14px; border-left: 3px solid var(--fa-green); margin: 4px 0 4px 8px; font-size: 13px; }
+.fa-app .act-row.muted { border-left-color: var(--fa-muted); color: var(--fa-text-3); font-size: 12px; }
+.fa-app .act-type { font-weight: 500; color: var(--fa-text); white-space: nowrap; }
+.fa-app .act-detail { color: var(--fa-text-2); }
+/* dialogs */
+.fa-app .x-overlay { position: absolute; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); }
+.fa-app .x-dialog { width: min(440px, calc(100% - 32px)); background: var(--fa-menu); border-radius: 6px; padding: 18px 20px 16px; box-shadow: 0 10px 40px rgba(0,0,0,.6); color: var(--fa-text); font: 14px/1.45 Roboto, Arial, sans-serif; }
+.fa-app .x-dialog-title { font-size: 18px; font-weight: 500; margin-bottom: 6px; }
+.fa-app .x-dialog-text { color: var(--fa-text-2); font-size: 13px; margin-bottom: 12px; }
+.fa-app .x-dialog .textfield { margin: 4px 0 8px; }
+.fa-app .x-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.fa-app .x-warn { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; padding: 8px 10px; border-radius: 4px; background: rgba(255,167,38,.12); border: 1px solid rgba(255,167,38,.4); color: #ffcc80; font-size: 13px; }
+.fa-app .x-warn svg { color: #ffa726; }
+.fa-app .x-error { color: #ff7961; font-size: 12px; margin: -4px 0 6px 6px; }
+.fa-app .fa-tour-btn:disabled { opacity: .5; cursor: default; }
+/* the coach card sits above dialogs so the guide stays readable */
+.fa-app.tour-dialog .fa-tour { top: 14px; left: 14px; bottom: auto; width: min(330px, calc(100% - 28px)); }

@@ -19,7 +19,8 @@ Without `mode`, a framed page behaves as `embed` and a top-level page as `page`.
 `window.FA_MODE` before the scripts run.
 
 Demo ids: `field-view`, `find-a-field`, `map-layers`, `colorization`, `compare-dates`, `zones`, `satellite`,
-`photo-dots`, `order-mosaic`, `import-imagery`, `report`, `download-data`.
+`photo-dots`, `order-mosaic`, `import-imagery`, `report`, `download-data`, `elevation`, `quicktile`, `edit-field`,
+`crop-season`, `share-field`, `order-analytics`.
 
 ## Files
 
@@ -28,8 +29,9 @@ Demo ids: `field-view`, `find-a-field`, `map-layers`, `colorization`, `compare-d
 | `demo.html` | Built page (from `demo.template.html`). Loads the files below. |
 | `fa-engine.js` | The FieldAgent lookalike engine, support edition: `FieldAgentDemo.mount(root, DATA, opts)`. Generated from the lookalike's logic script by `patch_engine.py` (44 exact-match patches: options `seedLayers`, `tips`, `leadCapture`, `blockedMessage`, `downloadMessage`, `uploadMessage`; ~30 fine-grained events; a small API for the tour). Do not edit by hand — change the patch script and regenerate. |
 | `fa-style.css` | FieldAgent design tokens and the lookalike's styles (single dark theme, as the product). |
+| `fa-ext.js`, `fa-ext.css` | Extension panels the generated engine leaves inert: Edit Field, Add a Field Activity (crop seasons and activities), Share Field / Share Fields, Order Analytics. Wired through the engine's `opts.renderView / onBlocked / onAct / onInput / renderActivities / drawToolsFor` hooks. |
 | `fa-tour.js`, `fa-tour.css` | The guided-demo layer: coach card, progress, spotlight that follows the target, *Show me* / *Skip step* / *Start again*, finish card with links to the support pages. |
-| `scenarios.js` | The twelve demos as data (`window.FA_SCENARIOS`). Adding a demo is adding an entry here. |
+| `scenarios.js` | The eighteen demos as data (`window.FA_SCENARIOS`). Adding a demo is adding an entry here. |
 | `data/fa-data.js` | Field, surveys, catalog text and the image manifest (`img` keys → files under `img/`, `dims`). |
 | `img/` | 194 JPEG/PNG tiles: mosaics, QuickTiles, photo thumbnails, satellite dates, basemaps (10 MB). Decoded on demand. |
 | `sprite.svg.html` | Icon sprite (Material icons + the FieldAgent mark). |
@@ -52,7 +54,7 @@ Editing `scenarios.js` alone needs no build: `demo.html` loads it directly.
 step to `build/shots/`. Start `python3 -m http.server 8765` in the repository root, then
 `node tools/pw_tour.js map-layers zones …` (once: `npm i playwright` and `npx playwright install chromium`).
 `pw_restart.js`, `pw_switch.js` and `pw_views.js` cover *Start again*, switching demos, and the embed and phone
-viewports. All twelve demos pass.
+viewports. All eighteen demos pass.
 
 ## Hosting on GitHub Pages
 

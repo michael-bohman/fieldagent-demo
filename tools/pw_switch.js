@@ -12,7 +12,7 @@ const { chromium } = require('playwright');
   // advance two steps, then switch scenarios through the select
   for (let k = 0; k < 2; k++) { const b = await page.$('.fa-tour [data-tour="showme"]'); if (b) { await b.click(); await page.waitForTimeout(1000); } }
   await snap('map-layers step 2');
-  for (const next of ['order-mosaic', 'zones', 'colorization', 'photo-dots', 'field-view', 'compare-dates', 'satellite', 'import-imagery', 'report', 'map-layers']) {
+  for (const next of Object.keys(await page.evaluate(() => window.FA_SCENARIOS)).filter(k => k !== 'map-layers')) {
     await page.selectOption('#demo-pick', next); await page.waitForTimeout(900);
     await snap('switch → ' + next);
     if (next === 'report') { await page.screenshot({ path: 'build/shots/switch-report.png' }); }

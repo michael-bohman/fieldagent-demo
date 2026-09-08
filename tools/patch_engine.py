@@ -160,5 +160,32 @@ rep("""  Promise.all(first.map(loadImage)).then(() => {
 rep("""  return { state, openField, openFields, flyTo, openPhoto, openLead, render, goto, toast, layers, addLayer, setCollapsed, defaultLayers, root, panel, FIELD, emit, fitField, layerTitle };""",
 """  return { state, opts, openField, openFields, flyTo, openPhoto, openLead, render, goto, toast, layers, addLayer, setCollapsed, defaultLayers, root, panel, FIELD, emit, fitField, layerTitle, ready: booted };""")
 
+
+# 7. extension hooks (fa-ext.js adds new panels without touching the generated engine)
+rep("""    panel.innerHTML = state.view === 'fields' ? renderFields() : state.view === 'add' ? renderAdd() : state.view === 'layer' ? renderLayer(L) : state.view === 'zones' ? renderZones() : state.view === 'zone' ? renderZoneEdit() : state.view === 'order' ? renderOrder() : state.view === 'upload' ? renderUpload() : state.view === 'report' ? renderReportPanel() : renderField();""",
+"""    const extHtml = typeof opts.renderView === 'function' ? opts.renderView(state.view) : null;
+    panel.innerHTML = extHtml != null ? extHtml : state.view === 'fields' ? renderFields() : state.view === 'add' ? renderAdd() : state.view === 'layer' ? renderLayer(L) : state.view === 'zones' ? renderZones() : state.view === 'zone' ? renderZoneEdit() : state.view === 'order' ? renderOrder() : state.view === 'upload' ? renderUpload() : state.view === 'report' ? renderReportPanel() : renderField();""")
+rep("""    const b = e.target.closest('[data-blocked]'); if (b) { e.stopPropagation(); toast(blockedMsg(b.dataset.blocked)); if (state.menu) { state.menu = null; render(true); } return; }""",
+"""    const b = e.target.closest('[data-blocked]'); if (b) { e.stopPropagation(); if (typeof opts.onBlocked === 'function' && opts.onBlocked(b.dataset.blocked, b) === true) return; toast(blockedMsg(b.dataset.blocked)); if (state.menu) { state.menu = null; render(true); } return; }""")
+rep("""    const tab = e.target.closest('.rail .tab'); if (tab) { toast(blockedMsg(tab.dataset.tab)); return; }""",
+"""    const tab = e.target.closest('.rail .tab'); if (tab) { if (typeof opts.onTab === 'function' && opts.onTab(tab.dataset.tab, tab) === true) return; toast(blockedMsg(tab.dataset.tab)); return; }""")
+rep("""    const act = t.dataset.act; const L = findLayer(state.detailUid);
+    if (act === 'back') { goto(t.dataset.to || 'field'); }""",
+"""    const act = t.dataset.act; const L = findLayer(state.detailUid);
+    if (typeof opts.onAct === 'function' && opts.onAct(act, t, e) === true) return;
+    if (act === 'back') { goto(t.dataset.to || 'field'); }""")
+rep("""  panel.addEventListener('input', e => {
+    const t = e.target.closest('[data-act]'); if (!t) return; const act = t.dataset.act;""",
+"""  panel.addEventListener('input', e => {
+    const t = e.target.closest('[data-act]'); if (!t) return; const act = t.dataset.act;
+    if (typeof opts.onInput === 'function' && opts.onInput(act, t, e) === true) return;""")
+rep("""      <section class="card"><div class="card-title"><span class="grow">Field Activities</span><button class="iconbtn white" type="button" data-blocked="Adding an activity" aria-label="Add activity">${icon('i-addcircle', 'ico sm')}</button></div><div class="muted-center">No field activities to show.</div></section>""",
+"""      ${(typeof opts.renderActivities === 'function' && opts.renderActivities(f)) || `<section class="card"><div class="card-title"><span class="grow">Field Activities</span><button class="iconbtn white" type="button" data-blocked="Adding an activity" aria-label="Add activity">${icon('i-addcircle', 'ico sm')}</button></div><div class="muted-center">No field activities to show.</div></section>`}""")
+rep("""    const el = $('draw-tools'); const show = state.view === 'zone'; el.hidden = !show; if (!show) return;""",
+"""    const el = $('draw-tools'); const show = state.view === 'zone' || (typeof opts.drawToolsFor === 'function' && !!opts.drawToolsFor(state.view)); el.hidden = !show; if (!show) return;""")
+rep("""  return { state, opts, openField, openFields, flyTo, openPhoto, openLead, render, goto, toast, layers, addLayer, setCollapsed, defaultLayers, root, panel, FIELD, emit, fitField, layerTitle, ready: booted };""",
+"""  return { state, opts, openField, openFields, flyTo, openPhoto, openLead, render, goto, toast, layers, addLayer, setCollapsed, defaultLayers, root, panel, FIELD, emit, fitField, layerTitle, ready: booted,
+    ui: { icon, esc, head, tip, fmtAc, curField, blockedMsg, SENSOR_LABEL, $ } };""")
+
 (site / 'fa-engine.js').write_text(out, encoding='utf-8')
 print(f'{len(patches)} patches applied; engine {len(out)} chars')

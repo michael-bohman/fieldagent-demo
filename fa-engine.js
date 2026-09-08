@@ -583,7 +583,7 @@ function mount(root, DATA, opts = {}) {
       <section class="card"><div class="card-title"><span class="grow">Zones</span><button class="iconbtn white" type="button" data-act="zones" aria-label="Zone layers">${icon('i-layers', 'ico sm')}</button><button class="iconbtn white" type="button" data-blocked="Drawing a new zone" aria-label="Add zone">${icon('i-addcircle', 'ico sm')}</button><div class="select" style="margin:0;display:inline-block"><button class="iconbtn" type="button" data-act="menu" data-menu="zmore" aria-label="More">${icon('i-more', 'ico sm')}</button>${zoneMenu}</div></div>
         <div class="zone-row"><div class="bar boundary"></div><div class="grow"><b>Field Boundary</b><span>${fmtAc(f.acres)} ac</span></div></div>${zones}
         ${f.zones.length ? tip('zones', `${f.zones.length} zones are drawn on this field. Click the layers icon above to switch them on; a zone name opens it for editing, and every mosaic then reports statistics per zone.`) : ''}</section>
-      <section class="card"><div class="card-title"><span class="grow">Field Activities</span><button class="iconbtn white" type="button" data-blocked="Adding an activity" aria-label="Add activity">${icon('i-addcircle', 'ico sm')}</button></div><div class="muted-center">No field activities to show.</div></section>
+      ${(typeof opts.renderActivities === 'function' && opts.renderActivities(f)) || `<section class="card"><div class="card-title"><span class="grow">Field Activities</span><button class="iconbtn white" type="button" data-blocked="Adding an activity" aria-label="Add activity">${icon('i-addcircle', 'ico sm')}</button></div><div class="muted-center">No field activities to show.</div></section>`}
     </div>`;
   }
   function surveyProducts(f, s) {
@@ -730,7 +730,7 @@ function mount(root, DATA, opts = {}) {
   }
   const todayShort = () => { const d = new Date(); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${d.getFullYear()}`; };
   function renderDrawTools() {
-    const el = $('draw-tools'); const show = state.view === 'zone'; el.hidden = !show; if (!show) return;
+    const el = $('draw-tools'); const show = state.view === 'zone' || (typeof opts.drawToolsFor === 'function' && !!opts.drawToolsFor(state.view)); el.hidden = !show; if (!show) return;
     el.innerHTML = [['i-rect', 'Draw Rectangle'], ['i-polygon', 'Draw Polygon'], ['i-circle', 'Draw Circle'], ['i-move', 'Move'], ['i-rotatecw', 'Rotate'], ['i-edit', 'Edit', true], ['i-cut', 'Cut'], ['i-erase', 'Erase']].map(([ic, lab, on]) => `<button type="button" class="${on ? 'on' : ''}" ${on ? '' : `data-blocked="${esc(lab)}"`}>${icon(ic)}${esc(lab)}</button>`).join('');
   }
   // ----- Order Mosaics -----
@@ -839,7 +839,8 @@ function mount(root, DATA, opts = {}) {
     const L = state.view === 'layer' ? findLayer(state.detailUid) : null; if (state.view === 'layer' && !L) state.view = 'field';
     if (state.view === 'zone' && (state.zoneEdit == null || !curField().zones[state.zoneEdit])) state.view = 'field';
     if (state.view === 'report' && !layers().length) state.view = 'field';
-    panel.innerHTML = state.view === 'fields' ? renderFields() : state.view === 'add' ? renderAdd() : state.view === 'layer' ? renderLayer(L) : state.view === 'zones' ? renderZones() : state.view === 'zone' ? renderZoneEdit() : state.view === 'order' ? renderOrder() : state.view === 'upload' ? renderUpload() : state.view === 'report' ? renderReportPanel() : renderField();
+    const extHtml = typeof opts.renderView === 'function' ? opts.renderView(state.view) : null;
+    panel.innerHTML = extHtml != null ? extHtml : state.view === 'fields' ? renderFields() : state.view === 'add' ? renderAdd() : state.view === 'layer' ? renderLayer(L) : state.view === 'zones' ? renderZones() : state.view === 'zone' ? renderZoneEdit() : state.view === 'order' ? renderOrder() : state.view === 'upload' ? renderUpload() : state.view === 'report' ? renderReportPanel() : renderField();
     const sc2 = panel.querySelector('.panel-scroll'); if (keepScroll && sc2) sc2.scrollTop = lastScroll;
     const t = $('phone-title'); if (t) t.textContent = state.view === 'fields' ? 'Fields' : curField().name;
     renderDrawTools();
@@ -937,10 +938,10 @@ function mount(root, DATA, opts = {}) {
 
   // ---------- events ----------
   root.addEventListener('click', e => {
-    const b = e.target.closest('[data-blocked]'); if (b) { e.stopPropagation(); toast(blockedMsg(b.dataset.blocked)); if (state.menu) { state.menu = null; render(true); } return; }
+    const b = e.target.closest('[data-blocked]'); if (b) { e.stopPropagation(); if (typeof opts.onBlocked === 'function' && opts.onBlocked(b.dataset.blocked, b) === true) return; toast(blockedMsg(b.dataset.blocked)); if (state.menu) { state.menu = null; render(true); } return; }
     const nav = e.target.closest('[data-nav]'); if (nav) { openFields(); return; }
     const pin = e.target.closest('[data-pin]'); if (pin) { openField(pin.dataset.pin); return; }
-    const tab = e.target.closest('.rail .tab'); if (tab) { toast(blockedMsg(tab.dataset.tab)); return; }
+    const tab = e.target.closest('.rail .tab'); if (tab) { if (typeof opts.onTab === 'function' && opts.onTab(tab.dataset.tab, tab) === true) return; toast(blockedMsg(tab.dataset.tab)); return; }
     const tc = e.target.closest('[data-act="tipclose"]'); if (tc) { state.tipsDone.add(tc.dataset.tip); remember(); const card = tc.closest('.tip-card'); if (card) card.remove(); return; }
   });
   // modal + report stage share one handler because both live outside the panel
@@ -966,6 +967,7 @@ function mount(root, DATA, opts = {}) {
     if (e.target.closest('[data-blocked]') || e.target.closest('[data-nav]') || e.target.closest('[data-act="tipclose"]')) return;
     const t = e.target.closest('[data-act]'); if (!t) { if (state.menu) { state.menu = null; render(true); } return; }
     const act = t.dataset.act; const L = findLayer(state.detailUid);
+    if (typeof opts.onAct === 'function' && opts.onAct(act, t, e) === true) return;
     if (act === 'back') { goto(t.dataset.to || 'field'); }
     else if (act === 'open') { openField(t.dataset.fid); }
     else if (act === 'add') { goto('add'); emit('add_layers_opened', { field: state.fid }); }
@@ -1013,6 +1015,7 @@ function mount(root, DATA, opts = {}) {
   panel.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role=button],[role=switch],[role=checkbox],[role=radio],[role=option]')) { e.preventDefault(); e.target.click(); } });
   panel.addEventListener('input', e => {
     const t = e.target.closest('[data-act]'); if (!t) return; const act = t.dataset.act;
+    if (typeof opts.onInput === 'function' && opts.onInput(act, t, e) === true) return;
     if (act === 'search') { state.search = t.value; const scroll = panel.querySelector('.panel-scroll').scrollTop; render(); emit('search_changed', { query: state.search }); const inp = panel.querySelector('[data-act="search"]'); inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); panel.querySelector('.panel-scroll').scrollTop = scroll; return; }
     if (act === 'alt') { state.upload.alt = Math.round(parseFloat(t.value)); $('alt-caption').textContent = `${state.upload.alt} ft`; emit('upload_buffer_changed', { ft: state.upload.alt }); return; }
     if (act === 'zonename') { state.zoneNames[state.fid + ':' + t.dataset.zi] = t.value; dirty = true; return; }
@@ -1074,7 +1077,8 @@ function mount(root, DATA, opts = {}) {
     if (open) { state.detailUid = L.uid; state.view = 'layer'; state.menu = null; state.binTable = false; }
     render(); return L;
   }
-  return { state, opts, openField, openFields, flyTo, openPhoto, openLead, render, goto, toast, layers, addLayer, setCollapsed, defaultLayers, root, panel, FIELD, emit, fitField, layerTitle, ready: booted };
+  return { state, opts, openField, openFields, flyTo, openPhoto, openLead, render, goto, toast, layers, addLayer, setCollapsed, defaultLayers, root, panel, FIELD, emit, fitField, layerTitle, ready: booted,
+    ui: { icon, esc, head, tip, fmtAc, curField, blockedMsg, SENSOR_LABEL, $ } };
 }
 return { mount };
 })();
