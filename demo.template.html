@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FieldAgent guided demo</title>
+<meta name="description" content="An interactive, view-only copy of FieldAgent Web built from a real field, with a step-by-step guide for one feature.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Condensed:wght@700&display=swap">
+<!--STYLES-->
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #fff; font: 14px Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif; color-scheme: dark; }
+  body { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; overflow: hidden; }
+  .demo-bar { display: none; align-items: center; gap: 14px; height: 48px; padding: 0 16px; background: #0e0e0e; border-bottom: 1px solid rgba(255,255,255,.1); flex: 0 0 auto; }
+  body.page .demo-bar { display: flex; }
+  .demo-bar .brand { display: inline-flex; align-items: center; gap: 10px; font: 700 13px "Roboto Condensed", "Arial Narrow", Roboto, Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #aacc6c; white-space: nowrap; }
+  .demo-bar .brand svg { width: 26px; height: 25px; }
+  .demo-bar .sep { flex: 1; }
+  .demo-bar .title { font-size: 14px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .demo-bar a { color: #cfcfcf; text-decoration: none; font-size: 13px; padding: 7px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,.18); white-space: nowrap; }
+  .demo-bar a:hover { color: #fff; border-color: rgba(255,255,255,.4); }
+  .demo-bar a.primary { background: #799b3e; border-color: #799b3e; color: #fff; }
+  .demo-bar .demo-pick { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #9b9b9b; }
+  .demo-bar select { background: #1c1c1c; color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 4px; padding: 6px 8px; font: inherit; max-width: 240px; }
+  #fa-root { flex: 1; min-height: 0; height: 100%; }
+  .demo-fallback { padding: 24px; color: #cfcfcf; }
+  @media (max-width: 700px) { .demo-bar .title, .demo-bar .hide-sm { display: none !important; } .demo-bar { gap: 10px; padding: 0 12px; } }
+</style>
+</head>
+<body>
+<!--SPRITE-->
+<header class="demo-bar">
+  <span class="brand"><svg aria-hidden="true"><use href="#i-logo" fill="#799B3E"/></svg>FieldAgent demo</span>
+  <span class="title" id="demo-title"></span>
+  <span class="sep"></span>
+  <label class="hide-sm demo-pick">Demo <select id="demo-pick" aria-label="Choose a demo"></select></label>
+  <a id="demo-docs" href="https://support.senterasensors.com/fieldagent" target="_blank" rel="noopener">Back to the guide</a>
+</header>
+<div id="fa-root" class="fa-app"><div class="demo-fallback">Loading the demo…</div></div>
+<!--SCRIPTS-->
+<script>
+(function () {
+  const q = new URLSearchParams(location.search);
+  const framed = window.parent !== window;
+  // ?mode=page|embed wins; a host page may preset window.FA_MODE; otherwise a framed page is an embed
+  const mode = q.get('mode') || window.FA_MODE || (framed ? 'embed' : 'page');
+  const gitbookFrame = framed && mode !== 'page';
+  const DOCS = 'https://support.senterasensors.com';
+  const scenarios = window.FA_SCENARIOS || {};
+  let id = q.get('s') || q.get('scenario') || 'field-view'; if (!scenarios[id]) id = 'field-view';
+  document.body.classList.toggle('page', mode === 'page');
+
+  const root = document.getElementById('fa-root'); root.innerHTML = '';
+  let tour = null, app = null;
+  const send = action => { if (framed) { try { window.parent.postMessage({ action }, '*'); } catch (e) { /* not framed by GitBook */ } } };
+
+  let bootSeq = 0;
+  function boot(scenarioId) {
+    const sc = scenarios[scenarioId]; const seq = ++bootSeq;
+    document.title = `${sc.title} · FieldAgent demo`;
+    const t = document.getElementById('demo-title'); if (t) t.textContent = sc.title;
+    const d = document.getElementById('demo-docs'); if (d) d.href = DOCS + (sc.page || '/fieldagent');
+    if (tour) { tour.destroy(); tour = null; }
+    if (!app) {
+      app = FieldAgentDemo.mount(root, window.FA_DATA, {
+        fullViewport: false, seedLayers: sc.seedLayers !== false, tips: false, leadCapture: false,
+        blockedMessage: what => `${what} is not part of this demo. In FieldAgent it works from your own account.`,
+        downloadMessage: 'Downloads work in your FieldAgent account. This demo is view-only.',
+        uploadMessage: 'Uploads happen in your FieldAgent account. This demo is view-only.',
+        onEvent: (name, detail) => { if (tour) tour.onEvent(name, detail); },
+      });
+      window.FA_APP = app;
+    } else {
+      // switching scenarios: the tour's own reset re-seeds the field according to the new scenario
+      app.opts.seedLayers = sc.seedLayers !== false;
+      const fid = sc.field || app.state.fid;
+      app.state.seeded[fid] = false; app.state.layersByField[fid] = []; app.state.zonesOn[fid] = [];
+      app.state.sources = { surveys: true, satellite: false }; app.state.photo = null; app.state.menu = null; app.openField(fid, false);
+    }
+    // the engine opens the first field once its base imagery has decoded; the tour's own setup must run after that
+    Promise.resolve(app.ready).then(() => {
+      if (seq !== bootSeq) return;
+      tour = FieldAgentTour.start(app, sc, { docsBase: DOCS, framed: gitbookFrame, onEvent: (name, detail) => { if (window.FA_ANALYTICS) window.FA_ANALYTICS(name, detail); } });
+      window.FA_TOUR = tour;
+    });
+  }
+
+  const pick = document.getElementById('demo-pick');
+  if (pick) { Object.values(scenarios).forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.title; pick.appendChild(o); }); pick.value = id;
+    pick.addEventListener('change', () => { id = pick.value; history.replaceState(null, '', `?s=${encodeURIComponent(id)}&mode=${mode}`); boot(id); }); }
+
+  boot(id);
+
+  // GitBook webframe protocol: announce readiness, ask for a 16:10 frame, accept a scenario from the block's data
+  send({ action: '@webframe.ready' });
+  send({ action: '@webframe.resize', size: { aspectRatio: 16 / 10 } });
+  window.addEventListener('message', e => {
+    const st = e.data && e.data.state; if (!st) return;
+    const want = st.scenario || st.demo; if (want && scenarios[want] && want !== id) { id = want; boot(id); }
+  });
+})();
+</script>
+</body>
+</html>
