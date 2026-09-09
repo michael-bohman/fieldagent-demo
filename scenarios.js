@@ -33,12 +33,16 @@ window.FA_SCENARIOS = (function () {
     standcount: '/fieldagent/analytics/stand-count',
     tassel: '/fieldagent/analytics/tassel-count',
     orders: '/fieldagent/ordering/orders-and-flight-tasks',
+    hydrology: '/fieldagent/analytics/elevation-and-hydrology',
   };
   const back = { text: 'Click the <b>back arrow</b> at the top of the panel to return to the field view.', target: '[data-act="back"]', event: 'view_changed', match: d => d.view === 'field' };
   const openAdd = { text: 'Open <b>Add Map Layers</b>: click the layers icon in the <b>Map Layers</b> card.', target: '[data-act="add"]', event: 'add_layers_opened' };
   const ndvi = { kind: 'drone', survey: MS, product: 'ms', viz: 'ndvi' };
-  const pickMenu = (menuSel, optSel) => (app, root) => { const b = root.querySelector(menuSel); if (!b) return; b.click(); setTimeout(() => { const o = root.querySelector(optSel); if (o) o.click(); }, 180); };
-  const typeInto = (root, sel, text) => { const el = root.querySelector(sel); if (!el) return false; el.focus(); el.value = text; el.dispatchEvent(new Event('input', { bubbles: true })); return true; };
+  // Show me helpers. The tour hands every custom showMe a `bot` whose actions are paced and animated (a pointer glides to
+  // the control, menus stay open for a beat, text is typed, sliders are dragged): pickMenu opens a select and chooses an
+  // option; typeInto types into a field. Both return promises so several can be chained with await.
+  const pickMenu = (menuSel, optSel) => (app, root, bot) => bot.pick(menuSel, optSel);
+  const typeInto = (bot, sel, text) => bot.type(sel, text);
   const isoToday = (offsetDays = 0) => { const d = new Date(); d.setDate(d.getDate() + offsetDays); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
   const S = {};
@@ -233,9 +237,9 @@ window.FA_SCENARIOS = (function () {
       { text: 'Click the <b>plus</b> icon in the <b>Field Activities</b> card at the bottom of the panel.', target: '[data-act="x-activity"]', event: 'activity_opened' },
       { text: 'Open <b>Select Crop Season</b> and choose <b>Add Crop Season</b>.', target: '[data-act="menu"][data-menu="x-season"]', event: 'season_selected', match: d => d.season === 'new', showMe: pickMenu('[data-act="menu"][data-menu="x-season"]', '[data-act="x-season"][data-val="new"]') },
       { text: 'Choose the <b>Crop Type</b>. The list has Alfalfa, Barley, Canola, Corn, Cotton, Potato, Rice, Soybean, Sugar Beet, Wheat and Other.', target: '[data-act="menu"][data-menu="x-croptype"]', event: 'season_type_changed', showMe: pickMenu('[data-act="menu"][data-menu="x-croptype"]', '[data-act="x-croptype"][data-val="Corn"]') },
-      { text: 'Name the season, for example <b>Spring Corn</b>, and enter its <b>Start Date</b>.', target: 'input[data-act="x-sname"]', event: 'season_name_changed', match: d => d.name.trim().length > 2, showMe: (app, root) => { typeInto(root, 'input[data-act="x-sstart"]', isoToday(-120)); typeInto(root, 'input[data-act="x-sname"]', 'Spring Corn'); } },
+      { text: 'Name the season, for example <b>Spring Corn</b>, and enter its <b>Start Date</b>.', target: 'input[data-act="x-sname"]', event: 'season_name_changed', match: d => d.name.trim().length > 2, showMe: async (app, root, bot) => { await typeInto(bot, 'input[data-act="x-sstart"]', isoToday(-120)); await typeInto(bot, 'input[data-act="x-sname"]', 'Spring Corn'); } },
       { text: 'Under <b>New Field Activity</b>, set <b>Activity Type</b> to <b>Plant</b>. The form changes with the type.', target: '[data-act="menu"][data-menu="x-atype"]', event: 'activity_type_changed', match: d => d.type === 'Plant', showMe: pickMenu('[data-act="menu"][data-menu="x-atype"]', '[data-act="x-atype"][data-val="Plant"]') },
-      { text: 'Enter the <b>Applied At</b> date and the <b>Average Rate</b> from the planter, then click <b>SUBMIT</b>.', target: '[data-act="x-asubmit"]', event: 'activity_added', note: 'Show me enters a planting date and 32,000 seeds/acre before submitting.', showMe: (app, root) => { typeInto(root, 'input[data-act="x-applied"]', isoToday(-118)); typeInto(root, 'input[data-act="x-rate"]', '32000'); typeInto(root, 'input[data-act="x-spacing"]', '30'); setTimeout(() => { const b = root.querySelector('[data-act="x-asubmit"]'); if (b && !b.disabled) b.click(); }, 250); } },
+      { text: 'Enter the <b>Applied At</b> date and the <b>Average Rate</b> from the planter, then click <b>SUBMIT</b>.', target: '[data-act="x-asubmit"]', event: 'activity_added', note: 'Show me enters a planting date and 32,000 seeds/acre before submitting.', showMe: async (app, root, bot) => { await typeInto(bot, 'input[data-act="x-applied"]', isoToday(-118)); await typeInto(bot, 'input[data-act="x-rate"]', '32000'); await typeInto(bot, 'input[data-act="x-spacing"]', '30'); const b = root.querySelector('[data-act="x-asubmit"]'); if (b && !b.disabled) await bot.click(b); } },
     ],
     finish: { text: 'The activity now shows in Field Activities under its season. With a Plant activity recorded, FieldAgent sends growth-stage notifications through the season, and a Kernel Count activity is what turns a tassel count into a yield estimate.', links: [{ label: 'Crop seasons and field activities', path: PAGE.seasons }, { label: 'Tassel Count and yield estimate', path: PAGE.tassel }] },
   };
@@ -257,7 +261,7 @@ window.FA_SCENARIOS = (function () {
       { text: 'In <b>Select Analytics Type</b>, choose <b>Field Scale Stand Count</b>. The list shows the products your plan includes.', target: '[data-act="menu"][data-menu="x-antype"]', event: 'analytics_type_selected', match: d => d.type === 'stand', showMe: pickMenu('[data-act="menu"][data-menu="x-antype"]', '[data-act="x-antype"][data-val="stand"]') },
       { text: 'In <b>Select Survey</b>, choose the flight. The panel reports how many photos it holds.', target: '[data-act="menu"][data-menu="x-asurvey"]', event: 'analytics_survey_selected', showMe: pickMenu('[data-act="menu"][data-menu="x-asurvey"]', `[data-act="x-asurvey"][data-val="${MS}"]`) },
       { text: 'Set <b>Crop Type</b> to <b>Corn</b>.', target: '[data-act="menu"][data-menu="x-crop"]', event: 'analytics_details_changed', match: d => d.key === 'crop', showMe: pickMenu('[data-act="menu"][data-menu="x-crop"]', '[data-act="x-crop"][data-val="Corn"]') },
-      { text: 'Enter the <b>Seeding Rate</b> and <b>Row Spacing</b> from the planter. FieldAgent compares the counted stand with what was planted.', target: 'input[data-act="x-orate"]', event: 'analytics_details_changed', match: d => d.key === 'spacing' && d.value.length > 0, showMe: (app, root) => { typeInto(root, 'input[data-act="x-orate"]', '32000'); setTimeout(() => typeInto(root, 'input[data-act="x-ospacing"]', '30'), 200); } },
+      { text: 'Enter the <b>Seeding Rate</b> and <b>Row Spacing</b> from the planter. FieldAgent compares the counted stand with what was planted.', target: 'input[data-act="x-orate"]', event: 'analytics_details_changed', match: d => d.key === 'spacing' && d.value.length > 0, showMe: async (app, root, bot) => { await typeInto(bot, 'input[data-act="x-orate"]', '32000'); await typeInto(bot, 'input[data-act="x-ospacing"]', '30'); } },
       { text: 'Check the <b>Order Summary</b> and click <b>SUBMIT</b>.', target: '[data-act="x-osubmit"]', event: 'analytics_submit_attempt', note: 'In this demo the order is not placed. In FieldAgent you receive an email when the results are ready.' },
     ],
     finish: { text: 'Analytics are ordered from a survey flown to the product’s specification — usually a low-altitude spot-scout pattern. Results arrive as map layers and downloadable data.', links: [{ label: 'Order analytics', path: PAGE.analytics }, { label: 'Stand Count', path: PAGE.standcount }] },
@@ -278,12 +282,86 @@ window.FA_SCENARIOS = (function () {
       { text: 'Click the <b>Stand Count - Individual</b> layer name to open its details.', target: '.layer-row[data-index="0"]', event: 'layer_details_opened' },
       { text: 'Open <b>Display Property</b> and switch to <b>Emergence (%)</b>: the same samples expressed as the share of the planted population that emerged.', target: '[data-act="menu"][data-menu="sprop"]', event: 'sample_prop_changed', match: d => d.prop === 'emergence', showMe: pickMenu('[data-act="menu"][data-menu="sprop"]', '[data-act="sprop"][data-prop="emergence"]') },
       { text: 'Switch back to <b>Plant Density (per acre)</b>. Below the colorization, <b>Zone Statistics</b> lists the minimum, average and maximum of the samples inside each zone.', target: '[data-act="menu"][data-menu="sprop"]', event: 'sample_prop_changed', match: d => d.prop === 'density', showMe: pickMenu('[data-act="menu"][data-menu="sprop"]', '[data-act="sprop"][data-prop="density"]') },
-      { text: 'Click any <b>circle on the map</b> to open that sample in the viewer.', demo: {}, event: 'sample_opened', showMe: app => { const L = samplesLayer(app); if (L) app.openSample(L.uid, 17); }, note: 'The demo carries the annotated photos of samples 17–24 — the top of the western column.' },
+      { text: 'Click any <b>circle on the map</b> to open that sample in the viewer.', demo: {}, event: 'sample_opened', showMe: (app, root, bot) => { const L = samplesLayer(app); if (L) return bot.sample(L.uid, 17); }, note: 'The demo carries the annotated photos of samples 17–24 — the top of the western column.' },
       { text: 'Switch to <b>ANNOTATION 2</b>: the same photo with the rows and every counted plant marked.', target: '[data-act="pband"][data-band="ANNOTATION 2"]', event: 'sample_tab_changed', match: d => d.band === 'ANNOTATION 2' },
       { text: 'Use <b>Next</b> to step through the samples. The panel shows <b>Crops Detected</b> and <b>Row Spacing</b> for each photo, and the blue validator box lets you check a count by hand.', target: '[data-act="pnav"][data-dir="1"]', event: 'sample_navigated' },
       { text: 'If a photo is not representative — a headland, a wet spot — <b>Exclude Data Point</b> drops it from the averages and zone statistics.', target: '[data-act="pexclude"]', event: 'sample_excluded', match: d => d.excluded },
     ],
     finish: { text: 'Heatmap for the pattern, individual samples for the evidence: that is how a stand count is read. The individual counts download as GeoJSON, CSV or Shapefile from the layer panel, and Create Report captures whichever layer is on the map.', links: [{ label: 'Stand Count', path: PAGE.standcount }, { label: 'Order analytics', path: PAGE.analytics }, { label: 'Create a report', path: PAGE.report }] },
+  };
+
+  const TC = 'f4', TC_SURVEY = 'tc0805';   // Field Scale Tassel Count (71302-00): the same field, flown 08-05-2022 after tasseling
+  S['tassel-count'] = {
+    id: 'tassel-count', title: 'Read a tassel count and estimate yield', page: PAGE.tassel, field: TC, seedLayers: false,
+    intro: 'The same demo field, flown again after tasseling for a <b>Field Scale Tassel Count</b>. Two hybrids were planted side by side, so the field carries a zone over each. The count arrives as a heatmap and the individual samples; a kernel count from the field turns it into a yield estimate.',
+    steps: [
+      openAdd,
+      { text: 'Under the flight of <b>08-05-2022</b>, turn on <b>Tassel Count Heatmap (2026)</b>. The list also holds the original 2022 run of the product (84002-00) — FieldAgent keeps every version.', target: `[data-act="pick"][data-survey="${TC_SURVEY}"][data-product="tasselheat"]`, event: 'layer_added', match: d => d.product === 'tasselheat' },
+      { text: 'Turn on <b>Tassel Count (2026)</b> — the 41 counted photos as points.', target: `[data-act="pick"][data-survey="${TC_SURVEY}"][data-product="tasselpts"]`, event: 'layer_added', match: d => d.product === 'tasselpts' },
+      back,
+      { text: 'Click the <b>Tassel Count (2026)</b> layer name to open <b>Tassel Count Details</b>.', target: '.layer-row[data-index="0"]', event: 'layer_details_opened' },
+      { text: 'Open <b>Display Property</b> and switch to <b>Tassels (per image)</b>: the raw count in each photo instead of the per-acre density.', target: '[data-act="menu"][data-menu="sprop"]', event: 'sample_prop_changed', match: d => d.prop === 'perimg', showMe: pickMenu('[data-act="menu"][data-menu="sprop"]', '[data-act="sprop"][data-prop="perimg"]') },
+      { text: 'Switch back to <b>Tassels (per acre)</b>.', target: '[data-act="menu"][data-menu="sprop"]', event: 'sample_prop_changed', match: d => d.prop === 'density', showMe: pickMenu('[data-act="menu"][data-menu="sprop"]', '[data-act="sprop"][data-prop="density"]') },
+      { text: 'Scroll to <b>Zone Statistics</b>: the two hybrids are compared here — minimum, average and maximum tassels per acre inside <b>Hybrid comparison zone A</b> and <b>zone B</b>. Press Next when you have looked.', info: true, target: '.stat-row.tri[data-zi="1"]' },
+      { text: 'Click a <b>circle on the map</b> to open that sample. Each photo shows the rows FieldAgent found and every tassel it counted.', demo: {}, event: 'sample_opened', showMe: (app, root, bot) => { const L = samplesLayer(app); if (L) return bot.sample(L.uid, 13); }, note: 'The demo carries the annotated photos of samples 14–21.' },
+      { text: 'Use <b>Next</b> to step through the samples; <b>Tassels Detected</b> updates for each photo.', target: '[data-act="pnav"][data-dir="1"]', event: 'sample_navigated' },
+      { text: 'Close the viewer with the <b>×</b>.', target: '[data-act="pclose"]', event: 'sample_closed' },
+      back,
+      { text: 'Now the yield estimate. Click the <b>plus</b> icon in the <b>Field Activities</b> card at the bottom of the panel to add a kernel count.', target: '[data-act="x-activity"]', event: 'activity_opened' },
+      { text: 'Open <b>Select Crop Season</b> and choose <b>2023 Corn</b>, the season this field already has.', target: '[data-act="menu"][data-menu="x-season"]', event: 'season_selected', match: d => d.season === '0', showMe: pickMenu('[data-act="menu"][data-menu="x-season"]', '[data-act="x-season"][data-val="0"]') },
+      { text: 'Set <b>Activity Type</b> to <b>Kernel Count</b>.', target: '[data-act="menu"][data-menu="x-atype"]', event: 'activity_type_changed', match: d => d.type === 'Kernel Count', showMe: pickMenu('[data-act="menu"][data-menu="x-atype"]', '[data-act="x-atype"][data-val="Kernel Count"]') },
+      { text: 'Enter the date and, for each ear you pulled, the <b>Kernel Rows</b> and <b>Kernels/Row</b>. Use <b>Add another ear</b> — at least three ears — then <b>SUBMIT</b>.', target: '[data-act="x-asubmit"]', event: 'activity_added', match: d => d.type === 'Kernel Count', note: 'Show me enters three ears of 16 × 34, 16 × 36 and 18 × 32 kernels before submitting.',
+        showMe: async (app, root, bot) => {
+          await typeInto(bot, 'input[data-act="x-applied"]', isoToday(-2));
+          const ears = [[16, 34], [16, 36], [18, 32]];
+          for (let k = 0; k < ears.length; k++) {
+            if (k > 0) { const add = root.querySelector('[data-act="x-addear"]'); if (add) await bot.click(add); }
+            await typeInto(bot, `input[data-act="x-ear-rows-${k}"]`, String(ears[k][0])); await typeInto(bot, `input[data-act="x-ear-per-${k}"]`, String(ears[k][1]));
+          }
+          const s = root.querySelector('[data-act="x-asubmit"]'); if (s && !s.disabled) await bot.click(s);
+        } },
+      { text: 'Open the <b>Tassel Count (2026)</b> layer again. <b>Yield Estimate</b> now lists the kernel count and shows the estimated bushels per acre.', target: '.layer-row[data-index="0"]', event: 'layer_details_opened' },
+    ],
+    finish: { text: 'Tassels per acre from the flight, kernels per ear from the field: the estimate is only as good as the ears you sampled, so re-enter kernel counts later in the season if the ears fill differently. The heatmap on the map goes into Create Report like any other layer.', links: [{ label: 'Tassel Count and yield estimate', path: PAGE.tassel }, { label: 'Crop seasons and field activities', path: PAGE.seasons }, { label: 'Zones and zone statistics', path: PAGE.zones }] },
+  };
+
+  const EH = 'f5', EH_SURVEY = 'eh0430';   // Field Scale Elevation and Hydrology (71309-00), 115.20 ac, flown 04-30-2020 on bare soil
+  const ehPick = id => `[data-act="pick"][data-survey="${EH_SURVEY}"][data-product="${id}"]`;
+  S['hydrology'] = {
+    id: 'hydrology', title: 'Read elevation and hydrology layers', page: PAGE.hydrology, field: EH, seedLayers: false,
+    intro: 'A 115-acre field flown on bare soil for <b>Field Scale Elevation and Hydrology</b>. The product returns five layers: a hillshade and a digital elevation model, 2-ft contour lines, the flow lines water follows, and the depressions where it pools.',
+    steps: [
+      openAdd,
+      { text: 'Under the flight of <b>04-30-2020</b>, turn on <b>Hillshade</b> — the terrain lit from the north-west, a quick way to see its shape.', target: ehPick('hill'), event: 'layer_added', match: d => d.product === 'hill' },
+      { text: 'Turn on the <b>Digital Elevation Model</b>. It is a mosaic like any other, colorized by elevation.', target: ehPick('dem'), event: 'layer_added', match: d => d.product === 'dem' },
+      { text: 'Turn on <b>Contour Lines (2ft)</b>, <b>Flow Lines</b> and <b>Depressions</b> as well — these three are vector layers.', target: ehPick('contours'), event: 'layer_added', match: d => d.product === 'contours' },
+      { text: 'Now <b>Flow Lines</b>.', target: ehPick('flowlines'), event: 'layer_added', match: d => d.product === 'flowlines' },
+      { text: 'And <b>Depressions</b>.', target: ehPick('depressions'), event: 'layer_added', match: d => d.product === 'depressions' },
+      back,
+      { text: 'Five layers, drawn top to bottom in list order. Click <b>Depressions</b> to open its details.', target: '.layer-row[data-index="0"]', event: 'layer_details_opened' },
+      { text: 'Depressions are coloured by <b>Area (acres)</b>. Drag the <b>bins</b> slider to 3 so the small, medium and large ponding areas stand apart.', target: 'input[data-act="bins"]', event: 'bins_changed', demo: { value: 3 } },
+      { text: 'Drag <b>Opacity</b> down so the imagery shows through the ponding areas.', target: 'input[data-act="opacity"]', event: 'opacity_changed', demo: { value: 35 } },
+      back,
+      { text: 'Click <b>Contour Lines (2ft)</b>. The lines are coloured by elevation on the Terrain scale — the same scale as the elevation model beneath them.', target: '.layer-row[data-index="2"]', event: 'layer_details_opened' },
+      { text: 'Switch <b>By Area</b> to <b>By Range</b>: with equal elevation steps per colour, the bands read like a topographic map.', target: '[data-act="mode"][data-mode="range"]', event: 'color_mode_changed', match: d => d.mode === 'range' },
+      back,
+      { text: 'Hover the <b>Hillshade</b> row and click the <b>eye</b> to hide it, then do the same with the elevation model — the flow lines and depressions on the bare imagery are the picture to plan drainage from.', target: '.layer-row[data-index="4"] [data-act="toggle"]', highlight: '.layer-row[data-index="4"]', event: 'layer_toggled', match: d => !d.visible },
+    ],
+    finish: { text: 'Hillshade for the shape, the elevation model for the numbers, contours for the map, flow lines and depressions for where the water goes. Each vector layer downloads as GeoJSON, CSV or Shapefile from its details panel.', links: [{ label: 'Elevation and hydrology', path: PAGE.hydrology }, { label: 'Elevation Mosaic', path: PAGE.elev }, { label: 'Colorization and visualization', path: PAGE.color }] },
+  };
+
+  S['create-field'] = {
+    id: 'create-field', title: 'Create a field', page: PAGE.create, field: F, seedLayers: true,
+    setup(app) { app.openFields(); },
+    intro: 'New fields start from the <b>Fields</b> list. FieldAgent offers two ways in: import from a connected partner, or draw the boundary and fill in the details yourself.',
+    steps: [
+      { text: 'Click the <b>plus</b> icon at the top of the Fields panel.', target: '[data-blocked="Adding a field"]', event: 'create_field_opened' },
+      { text: 'Type a <b>Name</b> for the field. Grower, Farm and the address are optional, and they power the search and the Sort By menu later.', target: 'input[data-act="cf-name"]', event: 'create_field_changed', match: d => d.key === 'name' && d.value.trim().length > 2, demo: { text: 'North 80' }, showMe: async (app, root, bot) => { await typeInto(bot, 'input[data-act="cf-name"]', 'North 80'); await typeInto(bot, 'input[data-act="cf-grower"]', 'Johnson Farms'); await typeInto(bot, 'input[data-act="cf-farm"]', 'Home'); } },
+      { text: 'Pick the <b>State</b>.', target: '[data-act="menu"][data-menu="cf-state"]', event: 'create_field_changed', match: d => d.key === 'state', showMe: pickMenu('[data-act="menu"][data-menu="cf-state"]', '[data-act="cf-state"][data-val="Minnesota"]') },
+      { text: 'Draw the boundary with the tools on the right edge of the map: <b>Draw Rectangle</b> for a square field, <b>Draw Polygon</b> to click around an irregular one, <b>Draw Circle</b> for a pivot. Press one now.', target: '[data-blocked="Draw Polygon"]', event: 'boundary_drawn', note: 'In this demo the shape is sketched for you. In FieldAgent you click the corners on the map and finish on the first point; Edit, Cut and Erase then refine it.' },
+      { text: '<b>SAVE</b> is enabled once the field has a name and a boundary. Click it.', target: '[data-act="cf-save"]', event: 'create_field_attempt' },
+    ],
+    finish: { text: 'In FieldAgent the new field opens immediately with its acreage computed from the boundary, and it appears in the Fields list and in FieldAgent Mobile for flight planning. Fields can also arrive from a connected John Deere Operations Center or Climate FieldView account through the Partner Fields card.', links: [{ label: 'Create a field', path: PAGE.create }, { label: 'Edit or delete a field', path: PAGE.edit }, { label: 'Find a field', path: PAGE.find }] },
   };
 
   return S;

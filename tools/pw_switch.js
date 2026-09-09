@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
   const page = await browser.newPage({ viewport: { width: 1100, height: 640 } });
   await page.route('**/fonts.googleapis.com/**', r => r.abort());
   const errors = []; page.on('pageerror', e => errors.push('pageerror: ' + e.message.slice(0, 300)));
-  await page.goto((process.env.FA_BASE || 'http://127.0.0.1:8765') + '/demo.html?s=map-layers&mode=page', { waitUntil: 'load' });
+  await page.goto((process.env.FA_BASE || 'http://127.0.0.1:8765') + '/demo.html?s=map-layers&mode=page&speed=8', { waitUntil: 'load' });
   await page.waitForFunction(() => window.FA_TOUR, null, { timeout: 20000 }); await page.waitForTimeout(500);
   const snap = async label => console.log(`  [${label}]`, JSON.stringify(await page.evaluate(() => ({ step: FA_TOUR.step, view: FA_APP.state.view, layers: FA_APP.layers().map(l => (l.product || l.kind) + (l.visible ? '' : '(h)')), zones: FA_APP.state.zonesOn[FA_APP.state.fid], title: document.title, text: (document.querySelector('.fa-tour-text') || {}).textContent?.slice(0, 50) }))));
   await snap('map-layers');

@@ -31,11 +31,11 @@ hosted = hosted.replace('<!--SCRIPTS-->', '<script src="data/fa-data.js"></scrip
 (root / 'demo.html').write_text(hosted, encoding='utf-8')
 
 # ---- single-file preview: field f1 (the three Mavic flights, satellite, near basemaps) and the stand-count field f3
-#      with two of its sample photos ----
-keep_surveys = {'m3m0904', 'm3m0819', 'm3e0904', 'sc0610'}
-keep_samples = {'ph_f3_sc0610_18_a1', 'ph_f3_sc0610_18_a2', 'ph_f3_sc0610_21_a1'}
+#      and the tassel-count field f4, each with a couple of sample photos ----
+keep_surveys = {'m3m0904', 'm3m0819', 'm3e0904', 'sc0610', 'tc0805', 'eh0430'}
+keep_samples = {'ph_f3_sc0610_18_a1', 'ph_f3_sc0610_18_a2', 'ph_f3_sc0610_21_a1', 'ph_f4_tc0805_14_a1', 'ph_f4_tc0805_21_a1'}
 slim = json.loads(json.dumps(data))
-slim['fields'] = [f for f in slim['fields'] if f['id'] in ('f1', 'f3')]
+slim['fields'] = [f for f in slim['fields'] if f['id'] in ('f1', 'f3', 'f4', 'f5')]
 for f in slim['fields']:
     f['surveys'] = [s for s in f['surveys'] if s['key'] in keep_surveys]
     for s in f['surveys']:
@@ -45,9 +45,9 @@ for f in slim['fields']:
                     pt['img'] = {k: v for k, v in pt['img'].items() if v in keep_samples}
                     if not pt['img']: del pt['img']
 def keep_key(k):
-    if k.startswith('bm_'): return k in ('bm_f1', 'bm_far', 'bm_f3_l0', 'bm_f3_l2', 'bm_f3_l10')
-    if k.startswith('ph_f3_'): return k in keep_samples
-    m = re.match(r'(ph_)?f[13]_(sat\d+|[a-z0-9]+)_', k)
+    if k.startswith('bm_'): return k in ('bm_f1', 'bm_far', 'bm_f3_l0', 'bm_f3_l2', 'bm_f3_l10', 'bm_f5_l0', 'bm_f5_l6')
+    if k.startswith('ph_f3_') or k.startswith('ph_f4_'): return k in keep_samples
+    m = re.match(r'(ph_)?f[1345]_(sat\d+|[a-z0-9]+)_', k)
     if not m: return False
     grp = m.group(2)
     return grp.startswith('sat') or grp in keep_surveys

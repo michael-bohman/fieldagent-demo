@@ -376,7 +376,7 @@ rep("""  // ----- Zones layer view (select which zones draw on the map) and Edit
       </section>
       ${colorizationHtml(L)}
       <section class="card"><div class="card-title"><span class="grow">Zone Statistics</span><button class="iconbtn" type="button" data-blocked="Zone statistics options" aria-label="More">${icon('i-more', 'ico sm')}</button></div>
-        ${zs.map(z => `<div class="stat-row tri"><div class="bar${z.boundary ? ' boundary' : ''}"></div><div class="grow"><b>${esc(z.name)}</b><span>${fmtAc(z.acres)} ac</span><div class="mam"><div><b>${fmtV(L, z.min)}${z.min == null ? '' : unit}</b><span>Minimum</span></div><div><b>${fmtV(L, z.avg)}${z.avg == null ? '' : unit}</b><span>Average</span></div><div><b>${fmtV(L, z.max)}${z.max == null ? '' : unit}</b><span>Maximum</span></div></div></div></div>`).join('')}
+        ${zs.map((z, zi) => `<div class="stat-row tri" data-zi="${zi}"><div class="bar${z.boundary ? ' boundary' : ''}"></div><div class="grow"><b>${esc(z.name)}</b><span>${fmtAc(z.acres)} ac</span><div class="mam"><div><b>${fmtV(L, z.min)}${z.min == null ? '' : unit}</b><span>Minimum</span></div><div><b>${fmtV(L, z.avg)}${z.avg == null ? '' : unit}</b><span>Average</span></div><div><b>${fmtV(L, z.max)}${z.max == null ? '' : unit}</b><span>Maximum</span></div></div></div></div>`).join('')}
         ${tip('szstats', 'Minimum, average and maximum of the samples that fall inside each zone — the same numbers FieldAgent prints for the individual counts.')}</section>
       <section class="card"><div class="card-title">Download Files</div><div class="dl-sub">Layer Data</div>
         ${(an.downloads || ['GeoJSON', 'CSV', 'Shapefile']).map(fmt => `<div class="dl-row"><div class="grow"><b>${esc(fmt)}</b></div><button class="dl-btn" type="button" data-act="download" data-what="samples" data-fmt="${esc(fmt)}" aria-label="Download ${esc(fmt)}">${icon('i-download', 'ico sm')}</button></div>`).join('')}
@@ -433,11 +433,186 @@ rep("""    else if (act === 'pband') { p.band = t.dataset.band; p.zoom = 1; rend
 rep("""  return { state, opts, openField, openFields, flyTo, openPhoto, openLead, render, goto, toast, layers, addLayer, setCollapsed, defaultLayers, root, panel, FIELD, emit, fitField, layerTitle, ready: booted,
     ui: { icon, esc, head, tip, fmtAc, curField, blockedMsg, SENSOR_LABEL, $ } };""",
 """  return { state, opts, openField, openFields, flyTo, openPhoto, openSample, openLead, render, goto, toast, layers, addLayer, setCollapsed, defaultLayers, root, panel, FIELD, emit, fitField, layerTitle, ready: booted,
-    ui: { icon, esc, head, tip, fmtAc, fmtV, curField, blockedMsg, SENSOR_LABEL, $, analyticOf, samplePoints } };""")
+    ui: { icon, esc, head, tip, fmtAc, fmtV, curField, blockedMsg, SENSOR_LABEL, $, analyticOf, samplePoints, toScreen: (wx, wy) => toScreen(wx, wy), isSamples } };""")
 
 # 12. the field a page opens on (a scenario's field), instead of always the first one
 rep("""  const f0 = FIELDS[0]; const s0 = f0.surveys.find(x => hasImg(`${f0.id}_${x.key}_ndvi`)) || f0.surveys[0];""",
 """  const f0 = FIELD[opts.startField] || FIELDS[0]; state.fid = f0.id; const s0 = f0.surveys.find(x => hasImg(`${f0.id}_${x.key}_ndvi`)) || f0.surveys[0];""")
+
+# 13. tassel count: per-product value ranges, a per-image count view, the one-tab sample viewer with "Tassels Detected",
+#     the Yield Estimate card and the Opacity card of FieldAgent's tassel panel, and the Sentera 12MP sensor label
+rep("""  tassel:  { id: 'tassel', label: 'Tassel Count', short: 'Tassel Count', index: true, range: null, dec: 0, bins: 5, mode: 'area' },
+};""",
+"""  tassel:  { id: 'tassel', label: 'Tassel Count', short: 'Tassel Count', index: true, range: null, dec: 0, bins: 5, mode: 'area' },
+  tasselimg: { id: 'tasselimg', label: 'Tassels per image', short: 'Tassels per image', index: true, range: null, dec: 0, bins: 5, mode: 'area' },
+};""")
+rep("""const SENSOR_LABEL = { m3m: 'DJI Mavic 3 Multispectral', rgb: 'DJI Mavic 3 Enterprise (RGB)', d4k: 'Sentera Double 4K' };""",
+"""const SENSOR_LABEL = { m3m: 'DJI Mavic 3 Multispectral', rgb: 'DJI Mavic 3 Enterprise (RGB)', d4k: 'Sentera Double 4K', s12: 'Sentera 12MP sensor' };""")
+rep("""    if (isSamples(L)) { const vals = samplePoints(L).map(p => sampleValue(L, p)); if (vals.length) return [Math.min(...vals), Math.max(...vals)]; }""",
+"""    if (isSamples(L)) { const vals = samplePoints(L).map(p => sampleValue(L, p)); if (vals.length) return [Math.min(...vals), Math.max(...vals)]; }
+    { const an = analyticOf(L); if (an && an.range) return an.range; }""")
+rep("""    const L = findLayer(p.uid); const pts = samplePoints(L); const pt = pts[p.idx]; const f = curField(); const tabs = ['ANNOTATION', 'ANNOTATION 2']; const key = pt.img && pt.img[p.band]; const ex = isExcluded(L, pt);""",
+"""    const L = findLayer(p.uid); const pts = samplePoints(L); const pt = pts[p.idx]; const f = curField(); const an = analyticOf(L) || {}; const tabs = an.tabs || ['ANNOTATION', 'ANNOTATION 2']; const key = pt.img && pt.img[p.band]; const ex = isExcluded(L, pt);""")
+rep("""        <div class="kv2"><div><div class="k">Crops Detected</div><div class="v">${fmtV(L, pt.density)} / ac</div></div><div><div class="k">Row Spacing</div><div class="v">${pt.rowSpacing != null ? pt.rowSpacing.toFixed(1) + ' in' : '—'}</div></div></div>""",
+"""        <div class="kv2"><div><div class="k">${esc(an.detectedLabel || 'Crops Detected')}</div><div class="v">${fmtV(L, pt.density)} / ac</div></div><div><div class="k">Row Spacing</div><div class="v">${pt.rowSpacing != null ? pt.rowSpacing.toFixed(1) + ' in' : '—'}</div></div></div>""")
+rep("""      ${colorizationHtml(L)}
+      <section class="card"><div class="card-title"><span class="grow">Zone Statistics</span><button class="iconbtn" type="button" data-blocked="Zone statistics options" aria-label="More">${icon('i-more', 'ico sm')}</button></div>
+        ${zs.map((z, zi) => `<div class="stat-row tri" data-zi="${zi}">""",
+"""      ${an.yieldEstimate ? yieldCardHtml(L, an) : ''}
+      ${colorizationHtml(L)}
+      ${an.opacity ? `<section class="card"><div class="card-title">Opacity</div><div class="slider-row"><input class="fa-range" type="range" min="0" max="100" step="1" value="${Math.round(L.opacity * 100)}" data-act="opacity" aria-label="Opacity"></div><div class="slider-caption">${Math.round(L.opacity * 100)}%</div></section>` : ''}
+      <section class="card"><div class="card-title"><span class="grow">Zone Statistics</span><button class="iconbtn" type="button" data-blocked="Zone statistics options" aria-label="More">${icon('i-more', 'ico sm')}</button></div>
+        ${zs.map((z, zi) => `<div class="stat-row tri" data-zi="${zi}">""")
+
+# 14. yield estimate from a Kernel Count activity (fa-ext.js keeps the activities in state.ext); the viewer reports closing
+rep("""  function renderSamplesLayer(L) {""",
+"""  // Tassel Count → Yield Estimate: needs a Kernel Count activity of the field (Field Activities → + → Kernel Count). The demo
+  // uses the common conversion tassels/acre × kernels/ear ÷ 90,000 kernels per bushel; FieldAgent's own factor may differ.
+  const KERNELS_PER_BUSHEL = 90000;
+  function kernelCounts(fid) { const acts = ((state.ext || {}).activities || {})[fid] || []; return acts.filter(a => a.type === 'Kernel Count' && (a.ears || []).some(e => +e.rows > 0 && +e.per > 0)).map(a => { const ears = a.ears.filter(e => +e.rows > 0 && +e.per > 0); const kpe = ears.reduce((t, e) => t + (+e.rows) * (+e.per), 0) / ears.length; return { applied: a.applied, ears: ears.length, kpe }; }); }
+  function yieldCardHtml(L, an) {
+    const kcs = kernelCounts(L.fid); const docs = (opts.docsBase || 'https://support.senterasensors.com') + '/fieldagent/analytics/tassel-count';
+    if (!kcs.length) return `<section class="card"><div class="card-title">Yield Estimate</div><div class="tip" style="margin-top:2px">Yield estimation requires a kernel count activity.<br><b>Please create one.</b></div><div class="tip"><a href="${esc(docs)}" target="_blank" rel="noopener" style="color:#fff;text-decoration:underline">Click here</a> to learn more about yield estimates.</div>${tip('yield', 'A tassel count becomes a yield estimate once the field has a <b>Kernel Count</b> activity in its crop season (Field Activities → + → Kernel Count, at least three ears). FieldAgent then combines tassels per acre with kernels per ear.')}</section>`;
+    const sel = clamp(L.kc || 0, 0, kcs.length - 1); const kc = kcs[sel]; const st = layerStats(L); const bu = st.avg * kc.kpe / KERNELS_PER_BUSHEL;
+    const fmtDate = iso => iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(5, 7)}-${iso.slice(8, 10)}-${iso.slice(0, 4)}` : (iso || '');
+    const label = k => `Kernel Count · ${fmtDate(k.applied) || 'no date'} · ${k.ears} ${k.ears === 1 ? 'ear' : 'ears'}`;
+    const menu = state.menu === 'ykc' ? `<div class="menu" role="listbox">${kcs.map((k, i) => `<div class="opt${i === sel ? ' sel' : ''}" data-act="ykc" data-idx="${i}" role="option">${esc(label(k))}</div>`).join('')}</div>` : '';
+    return `<section class="card"><div class="card-title">Yield Estimate</div>
+      <div class="select${state.menu === 'ykc' ? ' open' : ''}"><span class="label">Kernel Count Activity</span><button class="value" type="button" data-act="menu" data-menu="ykc" aria-haspopup="listbox" aria-expanded="${state.menu === 'ykc'}"><span>${esc(label(kc))}</span>${icon('i-drop')}</button>${menu}</div>
+      <div class="kv-block"><div class="k">Kernels per ear</div><div class="v">${Math.round(kc.kpe).toLocaleString()}</div><div class="k">Estimated Yield</div><div class="v"><b style="font-size:16px">${Math.round(bu).toLocaleString()} bu/ac</b></div></div>
+      <div class="tip">${fmtV(L, st.avg)} tassels per acre × ${Math.round(kc.kpe)} kernels per ear ÷ ${KERNELS_PER_BUSHEL.toLocaleString()} kernels per bushel — the demo's conversion; FieldAgent's estimate can use a different factor.</div>
+      ${tip('yield2', 'Excluding samples or changing the kernel count updates the estimate. Re-enter kernel counts later in the season if the ears fill differently than expected.')}</section>`;
+  }
+  function renderSamplesLayer(L) {""")
+rep("""    else if (act === 'hideex') { L.hideExcluded = !L.hideExcluded; render(true); emit('hide_excluded_toggled', { on: !!L.hideExcluded }); }""",
+"""    else if (act === 'hideex') { L.hideExcluded = !L.hideExcluded; render(true); emit('hide_excluded_toggled', { on: !!L.hideExcluded }); }
+    else if (act === 'ykc') { L.kc = +t.dataset.idx; state.menu = null; render(true); emit('yield_activity_selected', { index: L.kc }); }""")
+rep("""  function closePhoto() { state.photo = null; modalEl.innerHTML = ''; dirty = true; }""",
+"""  function closePhoto() { const was = state.photo; state.photo = null; modalEl.innerHTML = ''; dirty = true; if (was) emit(was.kind === 'sample' ? 'sample_closed' : 'photo_closed'); }""")
+
+# 15. vector analytics ("features": the Elevation and Hydrology product's contour lines, flow lines and depressions) — drawn
+#     as lines or filled polygons, colourized by a property like the sample bubbles, with FieldAgent's Details / Colorization /
+#     Opacity / Download Files panel
+rep("""  tasselimg: { id: 'tasselimg', label: 'Tassels per image', short: 'Tassels per image', index: true, range: null, dec: 0, bins: 5, mode: 'area' },
+};""",
+"""  tasselimg: { id: 'tasselimg', label: 'Tassels per image', short: 'Tassels per image', index: true, range: null, dec: 0, bins: 5, mode: 'area' },
+  dem:     { id: 'dem', label: 'Elevation', short: 'Elevation', index: true, range: null, dec: 0, bins: 20, mode: 'area', scale: 'terrain' },
+  hill:    { id: 'hill', label: 'Hillshade', short: 'Hillshade', index: true, range: null, sig: 3, bins: 5, mode: 'area', scale: 'gray' },
+  contour: { id: 'contour', label: 'Elevation', short: 'Elevation', index: true, range: null, dec: 0, bins: 20, mode: 'area', scale: 'terrain' },
+  acres:   { id: 'acres', label: 'Area (acres)', short: 'Area', index: true, range: null, sig: 3, trim: true, bins: 5, mode: 'area', scale: 'wblue' },
+};""")
+# number formatting: 3 significant digits (50.0 · 146 · 242) and trimmed decimals (0.04 · 7.72 · 15.4) where FieldAgent prints them
+rep("""  const fmtV = (L, v) => v == null ? '—' : Math.abs(v) >= 100000 ? Math.round(v / 1000) + 'k' : Math.abs(v) >= 1000 ? (v / 1000).toPrecision(3) + 'k' : v.toFixed(decOf(L));""",
+"""  const fmtV = (L, v) => { if (v == null) return '—'; if (Math.abs(v) >= 100000) return Math.round(v / 1000) + 'k'; if (Math.abs(v) >= 1000) return (v / 1000).toPrecision(3) + 'k'; const vz = VIZ[L.viz] || {}; if (vz.sig) { const t = Number(v).toPrecision(vz.sig); return vz.trim ? String(Number(t)) : t; } const t = v.toFixed(decOf(L)); return vz.trim && t.includes('.') ? t.replace(/\.?0+$/, '') : t; };""")
+# world geometry for the features
+rep("""      analytics: (s.analytics || []).map(a => ({ ...a, points: (a.points || []).map(p => ({ ...p, w: [merc.x(p.lon), merc.y(p.lat)] })) })),""",
+"""      analytics: (s.analytics || []).map(a => ({ ...a, points: (a.points || []).map(p => ({ ...p, w: [merc.x(p.lon), merc.y(p.lat)] })), features: (a.features || []).map(ft => ({ ...ft, wr: (ft.rings || []).map(ringToWorld) })) })),""")
+rep("""  const isSamples = L => L.kind === 'samples';
+  const samplePoints = L => { const a = analyticOf(L); return a ? (a.points || []) : []; };""",
+"""  const isSamples = L => L.kind === 'samples';
+  const isFeatures = L => L.kind === 'features';
+  const samplePoints = L => { const a = analyticOf(L); return a ? (a.points || []) : []; };
+  const featureList = L => { const a = analyticOf(L); return a ? (a.features || []) : []; };
+  const itemsOf = L => isFeatures(L) ? featureList(L) : shownPoints(L);   // the things a value belongs to: sample points or vector features""")
+rep("""    const pts = shownPoints(L); const sig = `${L.fid}|${L.survey}|${L.product}|${L.prop}|${pts.map(p => p.i).join(',')}`;""",
+"""    const pts = itemsOf(L); const sig = `${L.fid}|${L.survey}|${L.product}|${L.prop}|${isFeatures(L) ? pts.length : pts.map(p => p.i).join(',')}`;""")
+rep("""    if (isSamples(L)) { const vals = samplePoints(L).map(p => sampleValue(L, p)); if (vals.length) return [Math.min(...vals), Math.max(...vals)]; }""",
+"""    if (isSamples(L) || isFeatures(L)) { const vals = (isFeatures(L) ? featureList(L) : samplePoints(L)).map(p => sampleValue(L, p)).filter(x => typeof x === 'number'); if (vals.length) return [Math.min(...vals), Math.max(...vals)]; }""")
+rep("""    if (L.kind === 'samples') { const an = analyticOf(L) || {}; const p0 = (an.props || [])[0]; L.prop = p0 ? p0.id : 'density'; L.viz = p0 ? p0.viz : (an.viz || 'stand'); L.col = defaultCol(L); return L; }""",
+"""    if (L.kind === 'samples') { const an = analyticOf(L) || {}; const p0 = (an.props || [])[0]; L.prop = p0 ? p0.id : 'density'; L.viz = p0 ? p0.viz : (an.viz || 'stand'); L.col = defaultCol(L); return L; }
+    if (L.kind === 'features') { const an = analyticOf(L) || {}; const p0 = (an.props || [])[0]; L.prop = p0 ? p0.id : null; L.viz = p0 && p0.viz ? p0.viz : 'rgb'; L.col = VIZ[L.viz] && VIZ[L.viz].index ? defaultCol(L) : null; if (an.opacity != null) L.opacity = an.opacity; return L; }""")
+rep("""  function ready(L) { if (isPhotos(L) || isSamples(L)) return true;""", """  function ready(L) { if (isPhotos(L) || isSamples(L) || isFeatures(L)) return true;""")
+rep("""    if (isPhotos(L) || isSamples(L)) return true;
+    const key = imgKey(L); if (!hasImg(key)) return false;""", """    if (isPhotos(L) || isSamples(L) || isFeatures(L)) return true;
+    const key = imgKey(L); if (!hasImg(key)) return false;""")
+rep("""    if (isPhotos(L) || isSamples(L)) return; if (!hasImg(imgKey(L))) return; const key = imgKey(L) + '|' + L.viz;""",
+"""    if (isPhotos(L) || isSamples(L) || isFeatures(L)) return; if (!hasImg(imgKey(L))) return; const key = imgKey(L) + '|' + L.viz;""")
+rep("""  function histOf(L) { if (isSamples(L)) return sampleHist(L); const key = imgKey(L), im = IMG[key]; if (!im) return null;""",
+"""  function histOf(L) { if (isSamples(L) || isFeatures(L)) return sampleHist(L); const key = imgKey(L), im = IMG[key]; if (!im) return null;""")
+rep("""        const L = Ls[i]; if (!L.visible || L.opacity <= 0 || isPhotos(L) || isSamples(L)) continue;""",
+"""        const L = Ls[i]; if (!L.visible || L.opacity <= 0 || isPhotos(L) || isSamples(L) || isFeatures(L)) continue;""")
+rep("""  function imgKey(L, viz) { const v = viz || L.viz; if (L.kind === 'sat') return `${L.fid}_sat${L.date}_${v}`; if (L.kind === 'photos' || L.kind === 'samples') return null;""",
+"""  function imgKey(L, viz) { const v = viz || L.viz; if (L.kind === 'sat') return `${L.fid}_sat${L.date}_${v}`; if (L.kind === 'photos' || L.kind === 'samples' || L.kind === 'features') return null;""")
+rep("""    if (isSamples(L)) { const pts = shownPoints(L); const vals = pts.map(p => sampleValue(L, p)); const h = sampleHist(L); const { edges } = buildLUT(L, h); const { min, max } = L.col; const rows = [];""",
+"""    if (isSamples(L) || isFeatures(L)) { const pts = itemsOf(L); const vals = pts.map(p => sampleValue(L, p)).filter(x => typeof x === 'number'); const h = sampleHist(L); const { edges } = buildLUT(L, h); const { min, max } = L.col; const rows = [];""")
+rep("""      return { rows, acres: FIELD[L.fid].acres, avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0, app: 0, count: vals.length, samples: true }; }""",
+"""      return { rows, acres: FIELD[L.fid].acres, avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0, app: 0, count: vals.length, samples: true, noun: isFeatures(L) ? ((analyticOf(L) || {}).noun || 'feature') : 'sample' }; }""")
+rep("""<td>${stats.samples ? `${r.count} sample${r.count === 1 ? '' : 's'}` : `${fmtAc(r.count * stats.app)} ac`}</td></tr>`).join('')}</table>`;""",
+"""<td>${stats.samples ? `${r.count} ${stats.noun || 'sample'}${r.count === 1 ? '' : 's'}` : `${fmtAc(r.count * stats.app)} ac`}</td></tr>`).join('')}</table>`;""")
+# drawing: vector features sit above the rasters and below the zones
+rep("""      // zones: only the ones selected in the Zones layer view, white like FieldAgent""",
+"""      // vector analytics: contour lines, flow lines, depressions — coloured per feature by the layer's colorization, or by the
+      // style FieldAgent exported with them (flow lines: #009dff, wider for the bigger channels)
+      for (let i = Ls.length - 1; i >= 0; i--) {
+        const L = Ls[i]; if (!isFeatures(L) || !L.visible || L.opacity <= 0) continue; const an = analyticOf(L) || {}; const feats = an.features || []; const st = an.style || {};
+        const colorize = !!(L.col && VIZ[L.viz] && VIZ[L.viz].index); const lut = colorize ? buildLUT(L, histOf(L)).lut : null; const poly = an.geom === 'polygon';
+        cx2.save(); cx2.globalAlpha = L.opacity; cx2.lineJoin = 'round'; cx2.lineCap = 'round';
+        for (const ft of feats) {
+          const p = new Path2D(); for (const ring of ft.wr) { ring.forEach(([wx, wy], k) => { const [x, y] = P.toScreen(wx, wy); k ? p.lineTo(x, y) : p.moveTo(x, y); }); if (poly) p.closePath(); }
+          let col = ft.color || st.color || '#009dff';
+          if (lut) { const val = sampleValue(L, ft); if (typeof val === 'number') { const packed = lut[clamp(Math.round(v2g(L, val)), 0, 255)]; if (!packed) continue; col = unpackCss(packed); } }
+          if (poly) { cx2.fillStyle = col; cx2.fill(p, 'evenodd'); cx2.lineWidth = st.outline || 1; cx2.strokeStyle = st.outlineColor || 'rgba(255,255,255,.55)'; cx2.stroke(p); }
+          else { cx2.lineWidth = (ft.width || st.width || 2) * (o.snapshot ? 0.8 : 1); cx2.strokeStyle = col; cx2.stroke(p); }
+        }
+        cx2.restore();
+      }
+      // zones: only the ones selected in the Zones layer view, white like FieldAgent""")
+# Add Map Layers rows, seeding, panel, report
+rep("""      s.analytics.forEach(a => kept.push({ id: a.id, name: a.name, key: a.kind === 'raster' ? `${f.id}_${s.key}_${a.id}` : null, avail: a.kind === 'raster' ? hasImg(`${f.id}_${s.key}_${a.id}`) : !!(a.points && a.points.length), analytic: a.kind, kind: a.kind === 'samples' ? 'samples' : 'drone' }));""",
+"""      s.analytics.forEach(a => kept.push({ id: a.id, name: a.name, key: a.kind === 'raster' ? `${f.id}_${s.key}_${a.id}` : null, avail: a.kind === 'raster' ? hasImg(`${f.id}_${s.key}_${a.id}`) : a.kind === 'features' ? !!(a.features && a.features.length) : !!(a.points && a.points.length), analytic: a.kind === 'features' ? (a.geom === 'polygon' ? 'polygons' : 'lines') : a.kind, kind: a.kind === 'samples' ? 'samples' : a.kind === 'features' ? 'features' : 'drone' }));""")
+rep("""${icon(p.analytic === 'raster' ? 'i-heatmap' : p.analytic === 'samples' ? 'i-samples' : p.qt ? 'i-grid' : 'i-mosaic', 'ico sm')}""",
+"""${icon(p.analytic === 'raster' ? 'i-heatmap' : p.analytic === 'samples' ? 'i-samples' : p.analytic === 'polygons' ? 'i-polygon' : p.analytic === 'lines' ? 'i-lines' : p.qt ? 'i-grid' : 'i-mosaic', 'ico sm')}""")
+rep("""    for (const sv of f.surveys) for (const a of (sv.analytics || [])) { const avail = a.kind === 'raster' ? hasImg(`${fid}_${sv.key}_${a.id}`) : !!(a.points && a.points.length); if (avail) mk({ kind: a.kind === 'samples' ? 'samples' : 'drone', survey: sv.key, product: a.id }, a.kind === 'raster'); }""",
+"""    for (const sv of f.surveys) for (const a of (sv.analytics || [])) { const avail = a.kind === 'raster' ? hasImg(`${fid}_${sv.key}_${a.id}`) : a.kind === 'features' ? !!(a.features && a.features.length) : !!(a.points && a.points.length); if (avail) mk({ kind: a.kind === 'samples' ? 'samples' : a.kind === 'features' ? 'features' : 'drone', survey: sv.key, product: a.id }, a.kind === 'raster'); }""")
+rep("""    if (isSamples(L)) return renderSamplesLayer(L);
+    const an = analyticOf(L);""",
+"""    if (isSamples(L)) return renderSamplesLayer(L);
+    if (isFeatures(L)) return renderFeaturesLayer(L);
+    const an = analyticOf(L);""")
+rep("""  function renderSamplesLayer(L) {""",
+"""  function renderFeaturesLayer(L) {
+    const f = curField(); const an = analyticOf(L) || {}; const prop = sampleProp(L); const props = an.props || []; const colorize = !!(L.col && VIZ[L.viz] && VIZ[L.viz].index);
+    const propMenu = state.menu === 'sprop' ? `<div class="menu" role="listbox">${props.map(pr => `<div class="opt${pr.id === L.prop ? ' sel' : ''}" data-act="sprop" data-prop="${esc(pr.id)}" role="option" aria-selected="${pr.id === L.prop}">${esc(pr.label)}</div>`).join('')}</div>` : '';
+    return head(f.name, { back: 'field' }) + `<div class="panel-scroll">
+      <section class="card"><div class="card-title">Details</div>
+        <div class="kv-block"><div class="k">Name</div><div class="v">${esc(an.name || layerTitle(L))}</div><div class="k">Survey</div><div class="v">${esc(layerSub(L).replace(' • ', ' · '))}</div></div>
+        ${props.length ? `<div class="select${state.menu === 'sprop' ? ' open' : ''}"><span class="label">Display Property:</span><button class="value" type="button" data-act="menu" data-menu="sprop" aria-haspopup="listbox" aria-expanded="${state.menu === 'sprop'}"><span>${esc(prop.label)}</span>${icon('i-drop')}</button>${propMenu}</div>` : ''}
+        ${an.note ? `<div class="tip">${esc(an.note)}</div>` : ''}
+        ${tip('features', `${(an.features || []).length.toLocaleString()} ${esc(an.noun || 'feature')}s drawn from the survey. ${colorize ? `Each one is coloured by its <b>${esc(prop.label)}</b> with the bins and scale below.` : 'They keep the style the product was delivered with.'}`)}
+      </section>
+      ${colorize ? colorizationHtml(L) : ''}
+      <section class="card"><div class="card-title">Opacity</div><div class="slider-row"><input class="fa-range" type="range" min="0" max="100" step="1" value="${Math.round(L.opacity * 100)}" data-act="opacity" aria-label="Opacity"></div><div class="slider-caption">${Math.round(L.opacity * 100)}%</div></section>
+      <section class="card"><div class="card-title">Download Files</div><div class="dl-sub">Layer Data</div>
+        ${(an.downloads || ['GeoJSON', 'CSV', 'Shapefile']).map(fmt => `<div class="dl-row"><div class="grow"><b>${esc(fmt)}</b></div><button class="dl-btn" type="button" data-act="download" data-what="features" data-fmt="${esc(fmt)}" aria-label="Download ${esc(fmt)}">${icon('i-download', 'ico sm')}</button></div>`).join('')}
+        ${tip('fdownload', 'Vector layers export as GeoJSON, CSV or Shapefile for your own GIS — the contour, flow-line and depression geometry with its attributes.')}</section>
+      <button class="delete-bar" type="button" disabled>Delete</button>
+    </div>`;
+  }
+  function renderSamplesLayer(L) {""")
+rep("""    else if (act === 'sprop') { const pr = ((analyticOf(L) || {}).props || []).find(x => x.id === t.dataset.prop); if (pr) { L.prop = pr.id; L.viz = pr.viz; L.col = defaultCol(L); } state.menu = null; render(true); emit('sample_prop_changed', { prop: L.prop }); }""",
+"""    else if (act === 'sprop') { const pr = ((analyticOf(L) || {}).props || []).find(x => x.id === t.dataset.prop); if (pr) { L.prop = pr.id; L.viz = pr.viz || 'rgb'; L.col = VIZ[L.viz] && VIZ[L.viz].index ? defaultCol(L) : null; } state.menu = null; render(true); emit('sample_prop_changed', { prop: L.prop }); }""")
+rep("""    const r = state.report; const f = curField(); const top = layers().find(L => L.visible && !isSamples(L) && VIZ[L.viz] && VIZ[L.viz].index && ready(L));""",
+"""    const r = state.report; const f = curField(); const top = layers().find(L => L.visible && !isSamples(L) && !isFeatures(L) && VIZ[L.viz] && VIZ[L.viz].index && ready(L));""")
+
+# ---- 16. visual transitions: a layer fades onto the map when it is added or shown again (450 ms) ----
+rep("""  function newLayer(fid, spec) {
+    const L = { uid: uidSeq++, fid, opacity: 1, clipped: true, visible: true, ...spec };""",
+"""  // A layer fades in over FADE_MS the first time it is drawn after being added or shown: L._fade is true while pending,
+  // then the start time, then 0. Report snapshots ignore it.
+  const FADE_MS = 450;
+  const fadeOf = (L, o) => { if (o && o.snapshot) return 1; if (!L._fade) return 1; if (L._fade === true) L._fade = performance.now(); const t = (performance.now() - L._fade) / FADE_MS; if (t >= 1) { L._fade = 0; return 1; } dirty = true; return t * (2 - t); };
+  function newLayer(fid, spec) {
+    const L = { uid: uidSeq++, fid, opacity: 1, clipped: true, visible: true, _fade: true, ...spec };""")
+rep("""        cx2.save(); cx2.globalAlpha = L.opacity; if (L.clipped || L.kind === 'sat') cx2.clip(bp); cx2.drawImage(src, r.x, r.y, r.w, r.h); cx2.restore();""",
+"""        cx2.save(); cx2.globalAlpha = L.opacity * fadeOf(L, o); if (L.clipped || L.kind === 'sat') cx2.clip(bp); cx2.drawImage(src, r.x, r.y, r.w, r.h); cx2.restore();""")
+rep("""        cx2.save(); cx2.globalAlpha = L.opacity; cx2.lineJoin = 'round'; cx2.lineCap = 'round';""",
+"""        cx2.save(); cx2.globalAlpha = L.opacity * fadeOf(L, o); cx2.lineJoin = 'round'; cx2.lineCap = 'round';""")
+rep("""        cx2.save(); cx2.globalAlpha = L.opacity; cx2.fillStyle = s.dotColor; cx2.strokeStyle = 'rgba(255,255,255,.95)'; cx2.lineWidth = 1.5;""",
+"""        cx2.save(); cx2.globalAlpha = L.opacity * fadeOf(L, o); cx2.fillStyle = s.dotColor; cx2.strokeStyle = 'rgba(255,255,255,.95)'; cx2.lineWidth = 1.5;""")
+rep("""        cx2.save(); cx2.globalAlpha = L.opacity; cx2.font = `700 ${Math.max(9, Math.round(R * 0.6))}px Roboto, "Helvetica Neue", Arial, sans-serif`; cx2.textAlign = 'center'; cx2.textBaseline = 'middle';""",
+"""        cx2.save(); cx2.globalAlpha = L.opacity * fadeOf(L, o); cx2.font = `700 ${Math.max(9, Math.round(R * 0.6))}px Roboto, "Helvetica Neue", Arial, sans-serif`; cx2.textAlign = 'center'; cx2.textBaseline = 'middle';""")
+rep("""    else if (act === 'toggle') { e.stopPropagation(); const l = findLayer(+t.dataset.uid); l.visible = !l.visible; render(true); emit('layer_toggled', { visible: l.visible, layer: layerTitle(l) }); }""",
+"""    else if (act === 'toggle') { e.stopPropagation(); const l = findLayer(+t.dataset.uid); l.visible = !l.visible; if (l.visible) l._fade = true; render(true); emit('layer_toggled', { visible: l.visible, layer: layerTitle(l) }); }""")
 
 (site / 'fa-engine.js').write_text(out, encoding='utf-8')
 print(f'{len(patches)} patches applied; engine {len(out)} chars')

@@ -33,8 +33,10 @@ window.FieldAgentExt = (function () {
     const { state, opts, ui, render, goto, toast, emit, root, panel } = app;
     const { icon, esc, head, tip, fmtAc, curField } = ui;
     const X = state.ext = state.ext || { seasons: {}, activities: {}, edit: null, act: null, share: null, order: null };
-    const seasonsOf = fid => (X.seasons[fid] = X.seasons[fid] || []);
-    const activitiesOf = fid => (X.activities[fid] = X.activities[fid] || []);
+    // a field may come with real crop seasons and activities (fa-data.js: field.seasons / field.activities); the demo starts from those
+    const seed = fid => { const f = (DATA.fields || []).find(x => x.id === fid) || {}; return { seasons: (f.seasons || []).map(s => ({ ...s })), activities: (f.activities || []).map(a => ({ ...a, ears: a.ears || [] })) }; };
+    const seasonsOf = fid => (X.seasons[fid] = X.seasons[fid] || seed(fid).seasons);
+    const activitiesOf = fid => (X.activities[fid] = X.activities[fid] || seed(fid).activities);
 
     // ---- shared form pieces (same classes the engine uses) ----
     const textfield = (label, act, value, o = {}) => `<label class="textfield"><span class="label">${esc(label)}</span><${o.textarea ? 'textarea rows="2"' : `input type="${o.type || 'text'}"`} data-act="${act}" ${o.placeholder ? `placeholder="${esc(o.placeholder)}"` : ''} ${o.textarea ? '' : `value="${esc(value == null ? '' : value)}"`}${o.min != null ? ` min="${o.min}"` : ''}${o.step ? ` step="${o.step}"` : ''}>${o.textarea ? esc(value || '') : ''}${o.textarea ? '</textarea>' : ''}</label>`;
@@ -67,6 +69,42 @@ window.FieldAgentExt = (function () {
       const f = curField(); const d = X.edit; if (!d || !d.name.trim()) return;
       Object.assign(f, { name: d.name.trim(), grower: d.grower.trim(), farm: d.farm.trim(), address: d.address.trim(), city: d.city.trim(), country: d.country.trim(), state: d.state, zip: d.zip.trim() });
       X.edit = null; goto('field'); toast('Field details saved — in this demo only.'); emit('field_saved', { field: f.id, grower: f.grower, farm: f.farm });
+    }
+
+    // ============================ Create New Field ============================
+    // FieldAgent Web's /new page: a Partner Fields card (import from a connected partner) and the Create New Field form,
+    // with the drawing tools on the map. The demo sketches the boundary when a shape tool is pressed and stops at SAVE.
+    function openCreateField() {
+      X.create = { name: '', grower: '', farm: '', address: '', city: '', country: 'United States', state: '', zip: '', drawn: null };
+      goto('newfield'); emit('create_field_opened');
+    }
+    function createReady() { const c = X.create; return !!(c && c.name.trim() && c.drawn); }
+    function renderCreateField() {
+      const c = X.create || {};
+      return head('Create Field', { back: 'fields' }) + `<div class="panel-scroll">
+        <section class="card"><div class="card-title">Partner Fields</div>
+          <div class="muted-center">Choose a Partner to Import Fields</div>
+          <div class="tip">When a John Deere Operations Center or Climate FieldView connection exists on the account, its fields are listed here and import with one click.</div></section>
+        <section class="card"><div class="card-title">Create New Field</div>
+          ${textfield('Name *', 'cf-name', c.name)}
+          ${textfield('Grower', 'cf-grower', c.grower)}
+          ${textfield('Farm', 'cf-farm', c.farm)}
+          ${textfield('Address', 'cf-address', c.address)}
+          ${textfield('City', 'cf-city', c.city)}
+          ${textfield('Country', 'cf-country', c.country)}
+          ${select('Select State', 'cf-state', 'cf-state', US_STATES, c.state, { placeholder: 'Select State' })}
+          ${textfield('Postal Code', 'cf-zip', c.zip)}
+          <div class="tip">${c.drawn ? `Boundary: ${esc(c.drawn)} drawn on the map.` : 'Draw the boundary with the tools on the right edge of the map — a rectangle, a polygon or a circle — then SAVE.'}</div>
+          <button class="btn-wide blue" type="button" data-act="cf-save" ${createReady() ? '' : 'disabled'}>Save</button>
+          ${tip('createfield', 'SAVE stays disabled until the field has a name and a boundary. In FieldAgent the new field opens right away and its acreage comes from the boundary you drew; in this demo the form stops at SAVE.')}</section>
+      </div>`;
+    }
+    function drawBoundaryDemo(tool) {
+      if (!X.create) return false;
+      X.create.drawn = tool === 'Draw Rectangle' ? 'a rectangle' : tool === 'Draw Polygon' ? 'a polygon' : tool === 'Draw Circle' ? 'a circle' : null;
+      if (!X.create.drawn) return false;
+      render(true); toast(`${X.create.drawn[0].toUpperCase()}${X.create.drawn.slice(1)} sketched for you — in FieldAgent you click the corners on the map.`); emit('boundary_drawn', { tool });
+      return true;
     }
 
     // =========================== Add a Field Activity ===========================
@@ -187,11 +225,13 @@ window.FieldAgentExt = (function () {
     }
 
     // ================================ hooks =================================
-    opts.renderView = view => view === 'editfield' ? renderEditField() : view === 'activity' ? renderActivity() : view === 'analytics' ? renderAnalytics() : null;
-    opts.drawToolsFor = view => view === 'editfield';
+    opts.renderView = view => view === 'editfield' ? renderEditField() : view === 'newfield' ? renderCreateField() : view === 'activity' ? renderActivity() : view === 'analytics' ? renderAnalytics() : null;
+    opts.drawToolsFor = view => view === 'editfield' || view === 'newfield';
     opts.renderActivities = f => renderActivitiesCard(f);
     opts.onBlocked = (label, el) => {
       if (label === 'Editing field details') { openEditField(); return true; }
+      if (label === 'Adding a field') { openCreateField(); return true; }
+      if (state.view === 'newfield' && /^Draw (Rectangle|Polygon|Circle)$/.test(label)) return drawBoundaryDemo(label);
       if (label === 'Adding an activity') { openActivity(); return true; }
       if (label === 'Sharing') { openShare(state.view === 'fields'); return true; }
       if (label === 'Order Analytics') { openAnalytics(); return true; }
@@ -205,6 +245,9 @@ window.FieldAgentExt = (function () {
       if (act === 'ef-save') { saveEditField(); return true; }
       if (act === 'ef-delete') { const d = X.edit; if (!d.confirmDelete) { d.confirmDelete = true; render(true); emit('field_delete_prompt'); } else { d.confirmDelete = false; render(true); toast('Deleting a field is not part of this demo. In FieldAgent it removes the field and its data for everyone in the organization.'); emit('field_delete_attempt'); } return true; }
       if (act === 'x-state') { pick(act, () => { X.edit.state = v; }); emit('field_edit_changed', { key: 'state', value: v }); return true; }
+      // create field
+      if (act === 'cf-state') { pick(act, () => { X.create.state = v; }); emit('create_field_changed', { key: 'state', value: v }); return true; }
+      if (act === 'cf-save') { if (!createReady()) return true; const c = X.create; toast(`"${c.name.trim()}" would be created now — in this demo the form stops here.`); emit('create_field_attempt', { name: c.name.trim(), boundary: c.drawn }); return true; }
       // activity
       if (act === 'x-season') { pick(act, () => { X.act.season = v; }); emit('season_selected', { season: v }); return true; }
       if (act === 'x-croptype') { pick(act, () => { X.act.newSeason.type = v; }); emit('season_type_changed', { type: v }); return true; }
@@ -225,6 +268,8 @@ window.FieldAgentExt = (function () {
       const v = t.value;
       const ef = { 'ef-name': 'name', 'ef-grower': 'grower', 'ef-farm': 'farm', 'ef-address': 'address', 'ef-city': 'city', 'ef-country': 'country', 'ef-zip': 'zip' };
       if (ef[act] && X.edit) { X.edit[ef[act]] = v; if (act === 'ef-name') { const b = panel.querySelector('[data-act="ef-save"]'); if (b) b.disabled = !v.trim(); } emit('field_edit_changed', { key: ef[act], value: v }); return true; }
+      const cf = { 'cf-name': 'name', 'cf-grower': 'grower', 'cf-farm': 'farm', 'cf-address': 'address', 'cf-city': 'city', 'cf-country': 'country', 'cf-zip': 'zip' };
+      if (cf[act] && X.create) { X.create[cf[act]] = v; const b = panel.querySelector('[data-act="cf-save"]'); if (b) b.disabled = !createReady(); emit('create_field_changed', { key: cf[act], value: v }); return true; }
       const ac = { 'x-sstart': ['newSeason', 'start'], 'x-send': ['newSeason', 'end'], 'x-sname': ['newSeason', 'name'], 'x-applied': ['applied'], 'x-rate': ['rate'], 'x-area': ['area'], 'x-variety': ['variety'], 'x-spacing': ['spacing'], 'x-maturity': ['maturity'] };
       if (ac[act] && X.act) { const path = ac[act]; if (path.length === 2) X.act[path[0]][path[1]] = v; else X.act[path[0]] = v; if (act === 'x-sname') { emit('season_name_changed', { name: v }); } else if (act === 'x-applied') { emit('activity_date_changed', { applied: v }); } refreshSubmit('x-asubmit', X.act && ((X.act.season === 'new' ? !!(X.act.newSeason.type && X.act.newSeason.name.trim()) : X.act.season !== '') && X.act.type && X.act.applied)); if (act === 'x-sname') refreshSeasonBtn(); return true; }
       const ear = act.match(/^x-ear-(rows|per)-(\d+)$/); if (ear && X.act) { X.act.ears[+ear[2]][ear[1]] = v; return true; }
@@ -236,7 +281,8 @@ window.FieldAgentExt = (function () {
     function refreshSeasonBtn() { /* the New Field Activity card appears once the season is complete; re-render only when it needs to appear */ const a = X.act; if (a && a.season === 'new' && a.newSeason.type && a.newSeason.name.trim() && !panel.querySelector('[data-menu="x-atype"]')) { const inp = panel.querySelector('[data-act="x-sname"]'); const pos = inp ? inp.selectionStart : null; render(true); const inp2 = panel.querySelector('[data-act="x-sname"]'); if (inp2) { inp2.focus(); if (pos != null) inp2.setSelectionRange(pos, pos); } } }
 
     app.ext = {
-      reset(fid) { X.seasons[fid] = []; X.activities[fid] = []; X.edit = null; X.act = null; X.order = null; closeDialog(); },
+      reset(fid) { const sd = seed(fid); X.seasons[fid] = sd.seasons; X.activities[fid] = sd.activities; X.edit = null; X.act = null; X.order = null; X.create = null; closeDialog(); },
+      openCreateField,
       openEditField, openActivity, openShare, openAnalytics, ANALYTICS, CROP_TYPES,
     };
     return app.ext;

@@ -20,18 +20,18 @@ Without `mode`, a framed page behaves as `embed` and a top-level page as `page`.
 
 Demo ids: `field-view`, `find-a-field`, `map-layers`, `colorization`, `compare-dates`, `zones`, `satellite`,
 `photo-dots`, `order-mosaic`, `import-imagery`, `report`, `download-data`, `elevation`, `quicktile`, `edit-field`,
-`crop-season`, `share-field`, `order-analytics`, `stand-count`.
+`crop-season`, `share-field`, `order-analytics`, `stand-count`, `tassel-count`, `hydrology`, `create-field`.
 
 ## Files
 
 | File | Role |
 | --- | --- |
 | `demo.html` | Built page (from `demo.template.html`). Loads the files below. |
-| `fa-engine.js` | The FieldAgent lookalike engine, support edition: `FieldAgentDemo.mount(root, DATA, opts)`. Generated from the lookalike's logic script by `patch_engine.py` (44 exact-match patches: options `seedLayers`, `tips`, `leadCapture`, `blockedMessage`, `downloadMessage`, `uploadMessage`; ~30 fine-grained events; a small API for the tour). Do not edit by hand — change the patch script and regenerate. |
+| `fa-engine.js` | The FieldAgent lookalike engine, support edition: `FieldAgentDemo.mount(root, DATA, opts)`. Generated from the lookalike's logic script by `patch_engine.py` (132 exact-match patches: options `seedLayers`, `tips`, `leadCapture`, `blockedMessage`, `downloadMessage`, `uploadMessage`; ~30 fine-grained events; a small API for the tour). Do not edit by hand — change the patch script and regenerate. |
 | `fa-style.css` | FieldAgent design tokens and the lookalike's styles (single dark theme, as the product). |
 | `fa-ext.js`, `fa-ext.css` | Extension panels the generated engine leaves inert: Edit Field, Add a Field Activity (crop seasons and activities), Share Field / Share Fields, Order Analytics. Wired through the engine's `opts.renderView / onBlocked / onAct / onInput / renderActivities / drawToolsFor` hooks. |
-| `fa-tour.js`, `fa-tour.css` | The guided-demo layer: coach card, progress, spotlight that follows the target, *Show me* / *Skip step* / *Start again*, finish card with links to the support pages. |
-| `scenarios.js` | The eighteen demos as data (`window.FA_SCENARIOS`). Adding a demo is adding an entry here. |
+| `fa-tour.js`, `fa-tour.css` | The guided-demo layer: coach card, progress, spotlight that follows the target, *Show me* / *Skip step* / *Start again* / *Play all*, finish card with links to the support pages. *Show me* is paced and animated (see *How Show me moves* below); the file also adds the UI transitions — panel views slide in, viewers and dialogs pop in, menus fade in — and the engine fades a layer onto the map when it is added. |
+| `scenarios.js` | The 22 demos as data (`window.FA_SCENARIOS`). Adding a demo is adding an entry here. |
 | `data/fa-data.js` | Field, surveys, catalog text and the image manifest (`img` keys → files under `img/`, `dims`). |
 | `img/` | 194 JPEG/PNG tiles: mosaics, QuickTiles, photo thumbnails, satellite dates, basemaps (10 MB). Decoded on demand. |
 | `sprite.svg.html` | Icon sprite (Material icons + the FieldAgent mark). |
@@ -50,11 +50,13 @@ python3 tools/build.py           # demo.html, index.html, and build/fa-demos-pre
 
 Editing `scenarios.js` alone needs no build: `demo.html` loads it directly.
 
-`tools/pw_tour.js` drives every demo end to end in headless Chromium through *Show me* and writes a screenshot per
-step to `build/shots/`. Start `python3 -m http.server 8765` in the repository root, then
+`tools/pw_tour.js` drives every demo end to end in headless Chromium through *Show me* and reports whether each step
+advanced (and how long it took). Start `python3 -m http.server 8765` in the repository root, then
 `node tools/pw_tour.js map-layers zones …` (once: `npm i playwright` and `npx playwright install chromium`).
+`FA_SPEED=4` runs the paced tour four times faster, `FA_SHOTS=1` saves a screenshot per step to `build/shots/`.
 `pw_restart.js`, `pw_switch.js` and `pw_views.js` cover *Start again*, switching demos, and the embed and phone
-viewports. All eighteen demos pass.
+viewports (they open the demos with `&speed=8`); `pw_frames.js <demo> <steps>` records a Show me as a frame sequence
+and `tools/sheet.py` lays the frames out as a contact sheet, which is how the pacing was tuned. All 21 demos pass.
 
 ## Hosting on GitHub Pages
 
@@ -83,8 +85,11 @@ S['zones'] = {
 - `target` is a CSS selector inside the demo (or a function returning an element). The spotlight follows it and
   *Show me* clicks it. `highlight` overrides what the ring surrounds.
 - `event` (or an array) is the engine event that proves the reader did the step; `match(detail)` narrows it.
-- `demo: { value }` sets a slider or input instead of clicking; `showMe: fn(app, root)` performs a custom
-  sequence (menus); `showMe: false` hides the button; `info: true` makes a read-only step with *Next*.
+- `demo: { value }` drags a slider to the value, `demo: { text }` types into a field; `showMe: async fn(app, root, bot)`
+  performs a custom sequence with the paced primitives (`bot.click(sel)`, `bot.pick(menuSel, optSel)`,
+  `bot.type(sel, text)`, `bot.slide(sel, value)`, `bot.sample(layerUid, index)`, `bot.wait(ms)` — all return promises,
+  so chain them with `await`); `showMe: false` hides the button; `info: true` makes a read-only step with *Next*.
+  `pickMenu(menuSel, optSel)` and `typeInto(bot, sel, text)` in `scenarios.js` are shorthands for the two common cases.
 - `note` adds a callout under the text (for example that uploads are disabled in the demo).
 - `seedLayers: false` starts the field with an empty Map Layers card so the demo adds layers itself.
 - `page` is the support page the demo belongs to; the top bar and finish links use it.
@@ -92,6 +97,20 @@ S['zones'] = {
 Every control the reader could use in the real app works the same way in the copy: the guide only watches and
 highlights. Controls that would change real data (orders, uploads, downloads, sharing) show a short message
 instead.
+
+## How Show me moves
+
+*Show me* is deliberately slow enough to follow. A pointer sets off from the button the reader pressed, glides to
+the control (about half a second across the panel), rests on it with FieldAgent's own hover state, presses — a
+ripple marks the click — and stays a moment before the tour moves on. Menus stay open for three quarters of a second
+before the option is chosen; sliders are dragged, with the map, histogram and caption updating as the thumb moves;
+text is typed a character at a time (dates are set whole); hidden row buttons such as the eye are revealed by hovering
+the row first; a sample bubble on the map is pointed at before its viewer opens. When the engine reports the step
+done, the card shows *Step N done*, the spotlight turns solid, and the result stays on screen for 1.2 s before the
+next card fades in. *Play all* runs the remaining steps this way with a reading pause before each one; *Pause*
+stops it. The timings live in `PACE` at the top of `fa-tour.js`, and `?speed=2` on a demo URL (or
+`FieldAgentTour.speed = 2` before the tour starts) runs everything twice as fast — `?speed=0.5` at half speed.
+`prefers-reduced-motion` keeps the pauses but drops the glides, ripples and slide-ins.
 
 ## Hosting notes
 

@@ -1,25 +1,41 @@
 /* Guided-demo chrome layered over the FieldAgent lookalike. Green accents match FieldAgent; everything else stays quiet. */
 .fa-app .fa-tour { position: absolute; left: 16px; bottom: 24px; z-index: 31; width: min(400px, calc(100% - 32px)); padding: 12px 14px 12px 16px; border-radius: 8px; background: rgba(18,18,18,.96); color: #fff; font: 13px/1.45 Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.55); border: 1px solid rgba(170,204,108,.35); }
 .fa-app .fa-tour.hidden { display: none; }
+.fa-app .fa-tour.swap { animation: fa-tour-in .3s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes fa-tour-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .fa-app .fa-tour-head { display: flex; align-items: baseline; gap: 10px; margin-right: 26px; }
-.fa-app .fa-tour-kicker { display: inline-flex; align-items: center; gap: 4px; font: 700 11px/1 "Roboto Condensed", "Arial Narrow", Roboto, Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #aacc6c; white-space: nowrap; }
+.fa-app .fa-tour-kicker { display: inline-flex; align-items: center; gap: 4px; font: 700 11px/1 "Roboto Condensed", "Arial Narrow", Roboto, Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #aacc6c; white-space: nowrap; transition: color .2s; }
 .fa-app .fa-tour-kicker svg { width: 14px; height: 14px; }
+.fa-app .fa-tour.stepdone .fa-tour-kicker { color: #d3f0a0; }
 .fa-app .fa-tour-title { font-size: 12px; color: #9b9b9b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fa-app .fa-tour-progress { display: flex; gap: 4px; margin: 8px 0 8px; }
-.fa-app .fa-tour-progress i { flex: 1; height: 3px; border-radius: 2px; background: #3a3a3a; }
+.fa-app .fa-tour-progress i { flex: 1; height: 3px; border-radius: 2px; background: #3a3a3a; transition: background .3s; }
 .fa-app .fa-tour-progress i.past { background: #799b3e; }
 .fa-app .fa-tour-progress i.now { background: #aacc6c; }
+.fa-app .fa-tour-progress i.pop { background: #d3f0a0; animation: fa-tour-pop .55s ease-out; }
+@keyframes fa-tour-pop { 0% { transform: scaleY(1); } 40% { transform: scaleY(2.2); } 100% { transform: scaleY(1); } }
 .fa-app .fa-tour-text { font-size: 13.5px; line-height: 1.5; margin-top: 6px; }
 .fa-app .fa-tour-text b { font-weight: 500; color: #fff; }
 .fa-app .fa-tour-note { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,.06); color: #cfcfcf; font-size: 12px; line-height: 1.45; }
 .fa-app .fa-tour-note svg { width: 16px; height: 16px; flex: 0 0 auto; color: #aacc6c; margin-top: 1px; }
-.fa-app .fa-tour-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-.fa-app .fa-tour-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 14px; border: 0; border-radius: 4px; font: 500 12.5px/1 Roboto, Arial, sans-serif; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
+.fa-app .fa-tour-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.fa-app .fa-tour-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 14px; border: 0; border-radius: 4px; font: 500 12.5px/1 Roboto, Arial, sans-serif; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
 .fa-app .fa-tour-btn svg { width: 16px; height: 16px; }
+.fa-app .fa-tour-btn .lbl, .fa-app .fa-tour-btn .lbl-busy { display: inline-flex; align-items: center; gap: 6px; }
+.fa-app .fa-tour-btn .lbl-busy { display: none; }
 .fa-app .fa-tour-btn.primary { background: #799b3e; color: #fff; }
 .fa-app .fa-tour-btn.primary:hover { background: #8aae49; }
 .fa-app .fa-tour-btn.ghost { background: transparent; color: #cfcfcf; border: 1px solid rgba(255,255,255,.2); }
 .fa-app .fa-tour-btn.ghost:hover { color: #fff; border-color: rgba(255,255,255,.45); }
+/* Play all sits in the head row, out of the way of the step's own actions */
+.fa-app .fa-tour-head.has-play { margin-right: 96px; }
+.fa-app .fa-tour-play { position: absolute; top: 7px; right: 32px; display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 8px 0 5px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; background: transparent; color: #9b9b9b; font: 700 10.5px/1 "Roboto Condensed", "Arial Narrow", Roboto, Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; transition: color .15s, border-color .15s; }
+.fa-app .fa-tour-play svg { width: 14px; height: 14px; }
+.fa-app .fa-tour-play:hover { color: #fff; border-color: rgba(170,204,108,.6); }
+/* while Show me is running the button reads "Showing…" and cannot be pressed again */
+.fa-app .fa-tour.busy [data-tour="showme"] { pointer-events: none; background: #5f7a31; color: #dfe9cc; }
+.fa-app .fa-tour.busy [data-tour="showme"] .lbl { display: none; }
+.fa-app .fa-tour.busy [data-tour="showme"] .lbl-busy { display: inline-flex; }
 .fa-app .fa-tour-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .fa-app .fa-tour-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 4px; border: 1px solid rgba(170,204,108,.45); background: rgba(121,155,62,.14); color: #e6f0d5; font: 500 12px/1 Roboto, Arial, sans-serif; text-decoration: none; cursor: pointer; }
 .fa-app .fa-tour-link:hover { background: rgba(121,155,62,.28); color: #fff; }
@@ -29,14 +45,42 @@
 .fa-app .fa-tour.done { border-color: rgba(170,204,108,.7); }
 .fa-app .fa-tour-badge { display: none; position: absolute; left: 16px; bottom: 24px; z-index: 31; padding: 8px 12px; border-radius: 16px; background: rgba(18,18,18,.94); color: #aacc6c; font: 700 11px/1 "Roboto Condensed", "Arial Narrow", Roboto, Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.5); border: 1px solid rgba(170,204,108,.35); }
 .fa-app .fa-tour-badge.show { display: inline-flex; }
-.fa-app .fa-tour-spot { position: absolute; z-index: 32; pointer-events: none; border: 2px solid #aacc6c; box-shadow: 0 0 0 4px rgba(170,204,108,.28), 0 0 18px rgba(170,204,108,.55); animation: fa-tour-pulse 1.6s ease-in-out infinite; transition: left .12s, top .12s, width .12s, height .12s; }
+/* the spotlight ring glides from one target to the next and turns solid when the step is done */
+.fa-app .fa-tour-spot { position: absolute; z-index: 32; pointer-events: none; border: 2px solid #aacc6c; box-shadow: 0 0 0 4px rgba(170,204,108,.28), 0 0 18px rgba(170,204,108,.55); animation: fa-tour-pulse 1.6s ease-in-out infinite; transition: left .32s cubic-bezier(.4,0,.2,1), top .32s cubic-bezier(.4,0,.2,1), width .32s cubic-bezier(.4,0,.2,1), height .32s cubic-bezier(.4,0,.2,1), background .25s, border-color .25s; }
+.fa-app .fa-tour-spot.ok { border-color: #d3f0a0; background: rgba(170,204,108,.16); animation: none; box-shadow: 0 0 0 3px rgba(170,204,108,.4), 0 0 24px rgba(170,204,108,.8); }
 @keyframes fa-tour-pulse { 0%, 100% { box-shadow: 0 0 0 4px rgba(170,204,108,.28), 0 0 18px rgba(170,204,108,.55); } 50% { box-shadow: 0 0 0 8px rgba(170,204,108,.12), 0 0 26px rgba(170,204,108,.8); } }
-@media (prefers-reduced-motion: reduce) { .fa-app .fa-tour-spot { animation: none; } }
+/* the demo pointer: an arrow that glides to the control Show me is about to use, presses it, and marks the click with a ripple */
+.fa-app .fa-tour-ptr { position: absolute; left: 0; top: 0; z-index: 34; pointer-events: none; opacity: 0; margin: -3px 0 0 -6px; will-change: transform; transition: transform var(--fa-ptr-dur, 0ms) cubic-bezier(.4,.05,.2,1), opacity .24s ease; }
+.fa-app .fa-tour-ptr.show { opacity: 1; }
+.fa-app .fa-tour-ptr svg { display: block; width: 26px; height: 26px; fill: #fff; stroke: #161616; stroke-width: 1.4; stroke-linejoin: round; filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); transform-origin: 6px 3px; transition: transform .13s ease; }
+.fa-app .fa-tour-ptr.press svg { transform: scale(.8); }
+.fa-app .fa-tour-ptr.grab svg { transform: scale(.9) rotate(-10deg); }
+.fa-app .fa-tour-rip { position: absolute; z-index: 33; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 2px solid #aacc6c; background: rgba(170,204,108,.28); pointer-events: none; animation: fa-tour-rip .6s ease-out forwards; }
+@keyframes fa-tour-rip { from { transform: scale(.25); opacity: .95; } to { transform: scale(1.7); opacity: 0; } }
+/* the pointer's hover mirrors FieldAgent's own hover states */
+.fa-app .layer-row.fa-tour-hover, .fa-app .field-row.fa-tour-hover { background: var(--fa-row-hover); }
+.fa-app .layer-row.fa-tour-hover .row-actions { display: flex; }
+.fa-app .menu .opt.fa-tour-hover { background: rgba(255,255,255,.08); }
+.fa-app .iconbtn.fa-tour-hover, .fa-app .dl-btn.fa-tour-hover { background: rgba(255,255,255,.08); }
+.fa-app .select .value.fa-tour-hover { border-color: var(--fa-green-bright); }
+.fa-app .btn-wide.fa-tour-hover, .fa-app .fa-tour-btn.fa-tour-hover, .fa-app [data-act="pick"].fa-tour-hover, .fa-app [data-act="pickphotos"].fa-tour-hover, .fa-app [data-act="picksat"].fa-tour-hover, .fa-app [data-act="mode"].fa-tour-hover, .fa-app [data-act="src"].fa-tour-hover, .fa-app [data-blocked].fa-tour-hover { filter: brightness(1.15); }
+/* ---- transitions in the demo UI itself: a new panel view slides in, viewers and dialogs pop in ---- */
+.fa-app .panel.fa-view-in .panel-scroll { animation: fa-view-in .34s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes fa-view-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+.fa-app [data-role="modal"].fa-modal-in .photo-modal { animation: fa-fade-in .22s ease-out both; }
+.fa-app [data-role="modal"].fa-modal-in .photo-dlg { animation: fa-pop-in .32s cubic-bezier(.2,.7,.2,1) both; }
+.fa-app .x-overlay { animation: fa-fade-in .22s ease-out both; }
+.fa-app .x-overlay.fa-modal-in .x-dialog { animation: fa-pop-in .32s cubic-bezier(.2,.7,.2,1) both; }
+.fa-app .menu { animation: fa-menu-in .16s ease-out both; }
+@keyframes fa-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fa-pop-in { from { opacity: 0; transform: scale(.96) translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes fa-menu-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .fa-app .fa-tour-spot, .fa-app .fa-tour-progress i.pop, .fa-app .fa-tour.swap, .fa-app .panel.fa-view-in .panel-scroll, .fa-app [data-role="modal"].fa-modal-in .photo-modal, .fa-app [data-role="modal"].fa-modal-in .photo-dlg, .fa-app .x-overlay, .fa-app .x-overlay.fa-modal-in .x-dialog, .fa-app .menu, .fa-app .fa-tour-rip { animation: none; } .fa-app .fa-tour-spot, .fa-app .fa-tour-ptr { transition: opacity .2s; } .fa-app .fa-tour-rip { display: none; } }
 /* landscape phones: the engine drops the rail and narrows the panel; keep the card compact */
 @media (max-height: 520px) and (min-width: 560px) { .fa-app .fa-tour { bottom: 10px; left: 10px; width: min(340px, calc(100% - 20px)); padding: 8px 10px 8px 12px; } .fa-app .fa-tour-text { font-size: 12.5px; } .fa-app .fa-tour-note { display: none; } }
 /* portrait phones: the panel is a bottom sheet, so the card docks under the phone bar */
 @media (max-width: 700px) and (orientation: portrait) { .fa-app .fa-tour { left: 10px; right: 10px; top: 60px; bottom: auto; width: auto; padding: 10px 12px 10px 14px; } .fa-app .fa-tour-badge { top: 60px; bottom: auto; } .fa-app .rotate-hint { display: none !important; } }
-/* while the photo viewer is open the card moves to the top-left corner so it never covers the viewer's controls */
+/* while the photo viewer is open the card moves to the bottom-left corner so it never covers the viewer's controls */
 .fa-app.tour-modal .fa-tour { top: auto; left: 14px; bottom: 14px; width: min(290px, calc(100% - 28px)); padding: 10px 12px 10px 14px; }   /* bottom-left of the map: clear of the viewer's tabs, close button and side panel */
 .fa-app.tour-modal .fa-tour-note { display: none; }
 .fa-app.tour-modal .fa-tour-badge { top: auto; left: 14px; bottom: 14px; }

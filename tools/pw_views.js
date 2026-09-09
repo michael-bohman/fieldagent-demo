@@ -6,8 +6,8 @@ const { chromium, devices } = require('playwright');
     { name: 'embed-800', vp: { width: 800, height: 500 }, url: 'demo.html?s=map-layers&mode=embed' },
     { name: 'embed-640', vp: { width: 640, height: 400 }, url: 'demo.html?s=colorization&mode=embed' },
     { name: 'fieldview-page', vp: { width: 1100, height: 640 }, url: 'demo.html?s=field-view&mode=page' },
-    { name: 'phone-portrait', vp: { width: 390, height: 844 }, mobile: true, url: 'demo.html?s=zones&mode=page' },
-    { name: 'phone-landscape', vp: { width: 844, height: 390 }, mobile: true, url: 'demo.html?s=zones&mode=page' },
+    { name: 'phone-portrait', vp: { width: 390, height: 844 }, mobile: true, url: 'demo.html?s=zones&mode=page&speed=8' },
+    { name: 'phone-landscape', vp: { width: 844, height: 390 }, mobile: true, url: 'demo.html?s=zones&mode=page&speed=8' },
     { name: 'index', vp: { width: 1100, height: 800 }, url: 'index.html' },
   ];
   for (const s of shots) {

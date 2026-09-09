@@ -63,6 +63,11 @@ const VIZ = {
   stand:   { id: 'stand', label: 'Stand Count', short: 'Stand Count', index: true, range: null, dec: 0, bins: 5, mode: 'area' },
   emerg:   { id: 'emerg', label: 'Emergence', short: 'Emergence', index: true, range: null, dec: 1, bins: 5, mode: 'area', unit: '%' },
   tassel:  { id: 'tassel', label: 'Tassel Count', short: 'Tassel Count', index: true, range: null, dec: 0, bins: 5, mode: 'area' },
+  tasselimg: { id: 'tasselimg', label: 'Tassels per image', short: 'Tassels per image', index: true, range: null, dec: 0, bins: 5, mode: 'area' },
+  dem:     { id: 'dem', label: 'Elevation', short: 'Elevation', index: true, range: null, dec: 0, bins: 20, mode: 'area', scale: 'terrain' },
+  hill:    { id: 'hill', label: 'Hillshade', short: 'Hillshade', index: true, range: null, sig: 3, bins: 5, mode: 'area', scale: 'gray' },
+  contour: { id: 'contour', label: 'Elevation', short: 'Elevation', index: true, range: null, dec: 0, bins: 20, mode: 'area', scale: 'terrain' },
+  acres:   { id: 'acres', label: 'Area (acres)', short: 'Area', index: true, range: null, sig: 3, trim: true, bins: 5, mode: 'area', scale: 'wblue' },
 };
 const INDEX_ORDER = ['ndvi', 'ndre', 'gndvi', 'cire', 'cig', 'ndwi', 'gli'];
 // A single-band view is coloured white-to-<its own colour> — blue, olive, red, terracotta, brick — and that scale heads the
@@ -89,7 +94,7 @@ const SCALES = [
 ];
 const scaleById = id => SCALES.find(s => s.id === id) || Object.values(BAND_SCALES).find(s => s.id === id) || SCALES[0];
 const SAT_PRODUCTS = [{ id: 'ndvi', name: 'NDVI (Red, NIR)' }, { id: 'ndre', name: 'NDRE (Red Edge, NIR)' }, { id: 'rgb', name: 'RGB (Red, Green, Blue)' }];
-const SENSOR_LABEL = { m3m: 'DJI Mavic 3 Multispectral', rgb: 'DJI Mavic 3 Enterprise (RGB)', d4k: 'Sentera Double 4K' };
+const SENSOR_LABEL = { m3m: 'DJI Mavic 3 Multispectral', rgb: 'DJI Mavic 3 Enterprise (RGB)', d4k: 'Sentera Double 4K', s12: 'Sentera 12MP sensor' };
 const DOT_COLORS = ['#6F32B4', '#F12AA9', '#DE781C', '#617A09', '#704BC7'];   // fallback photo-dot colours (FieldAgent assigns one per survey; the data carries the real ones)
 const PRODUCT_NAME = { ms: 'Multispectral Mosaic', rgb: 'RGB Mosaic', elev: 'Elevation Mosaic', vari: 'VARI Mosaic' };
 const BAND_TABS = { m3m: ['RGB', 'GREEN', 'NIR', 'RED', 'RED EDGE'], d4k: ['FALSE COLOR NDRE', 'NDRE', 'PRGB'], rgb: ['RGB'] };   // photo viewer tabs, as FieldAgent shows them per sensor
@@ -132,7 +137,7 @@ function mount(root, DATA, opts = {}) {
   const FIELDS = DATA.fields.map(f => ({ ...f, rect: rectOfExtent(f.extent), ring: ringToWorld(f.boundary), centerW: [merc.x(f.center[0]), merc.y(f.center[1])],
     zones: (f.zones || []).map(z => ({ ...z, rings: z.rings.map(ringToWorld) })),
     surveys: f.surveys.map((s, si) => { const ph = s.photos || {}; return { ...s, dotColor: s.dotColor || DOT_COLORS[si % DOT_COLORS.length], quicktiles: s.quicktiles || [],
-      analytics: (s.analytics || []).map(a => ({ ...a, points: (a.points || []).map(p => ({ ...p, w: [merc.x(p.lon), merc.y(p.lat)] })) })),
+      analytics: (s.analytics || []).map(a => ({ ...a, points: (a.points || []).map(p => ({ ...p, w: [merc.x(p.lon), merc.y(p.lat)] })), features: (a.features || []).map(ft => ({ ...ft, wr: (ft.rings || []).map(ringToWorld) })) })),
       photos: { ...ph, positions: (ph.positions || []).map(([lon, lat]) => [merc.x(lon), merc.y(lat)]), samples: (ph.samples || []).filter(sm => sm.lon != null && sm.lat != null).map(sm => ({ ...sm, w: [merc.x(sm.lon), merc.y(sm.lat)] })) } }; }) }));
   const FIELD = Object.fromEntries(FIELDS.map(f => [f.id, f]));
   const BASEMAPS = (DATA.basemaps || []).filter(b => hasImg(b.key)).map(b => ({ ...b, rect: rectOfBounds(b.bounds) }))
@@ -172,10 +177,11 @@ function mount(root, DATA, opts = {}) {
 
   function surveyOf(L) { return FIELD[L.fid].surveys.find(s => s.key === L.survey); }
   function satItemOf(L) { return SAT.items.find(i => satCode(i.date) === L.date); }
-  function imgKey(L, viz) { const v = viz || L.viz; if (L.kind === 'sat') return `${L.fid}_sat${L.date}_${v}`; if (L.kind === 'photos' || L.kind === 'samples') return null; if (analyticOf(L)) return `${L.fid}_${L.survey}_${L.product}`; return `${L.fid}_${L.survey}_${L.product.startsWith('qt_') ? L.product : v}`; }
+  function imgKey(L, viz) { const v = viz || L.viz; if (L.kind === 'sat') return `${L.fid}_sat${L.date}_${v}`; if (L.kind === 'photos' || L.kind === 'samples' || L.kind === 'features') return null; if (analyticOf(L)) return `${L.fid}_${L.survey}_${L.product}`; return `${L.fid}_${L.survey}_${L.product.startsWith('qt_') ? L.product : v}`; }
   function maskId(L) { return L.kind === 'sat' ? `${L.fid}_boundary` : L.product.startsWith('qt_') ? `${L.fid}_${L.survey}_${L.product}_mask` : `${L.fid}_${L.survey}_mask`; }
   function vizRange(L) { const v = VIZ[L.viz]; if (v.id === 'elev') return surveyOf(L).elevRange || [0, 1]; if (v.range) return v.range;
-    if (isSamples(L)) { const vals = samplePoints(L).map(p => sampleValue(L, p)); if (vals.length) return [Math.min(...vals), Math.max(...vals)]; } const r = (surveyOf(L).ranges || {})[v.id]; return r || [0, 1]; }
+    if (isSamples(L) || isFeatures(L)) { const vals = (isFeatures(L) ? featureList(L) : samplePoints(L)).map(p => sampleValue(L, p)).filter(x => typeof x === 'number'); if (vals.length) return [Math.min(...vals), Math.max(...vals)]; }
+    { const an = analyticOf(L); if (an && an.range) return an.range; } const r = (surveyOf(L).ranges || {})[v.id]; return r || [0, 1]; }
   // decimals: fixed per index; single bands print reflectance (0–1) with three, digital numbers (0–4000) with none
   function decOf(L) { const v = VIZ[L.viz]; return v.dec != null ? v.dec : 2; }
   function bandNames(L) { const s = surveyOf(L); return s && DATA.bands[s.bands] ? DATA.bands[s.bands].order : []; }
@@ -194,10 +200,15 @@ function mount(root, DATA, opts = {}) {
     if (L.product.startsWith('qt_')) return ['qt'];
     return [L.product];
   }
+  // A layer fades in over FADE_MS the first time it is drawn after being added or shown: L._fade is true while pending,
+  // then the start time, then 0. Report snapshots ignore it.
+  const FADE_MS = 450;
+  const fadeOf = (L, o) => { if (o && o.snapshot) return 1; if (!L._fade) return 1; if (L._fade === true) L._fade = performance.now(); const t = (performance.now() - L._fade) / FADE_MS; if (t >= 1) { L._fade = 0; return 1; } dirty = true; return t * (2 - t); };
   function newLayer(fid, spec) {
-    const L = { uid: uidSeq++, fid, opacity: 1, clipped: true, visible: true, ...spec };
+    const L = { uid: uidSeq++, fid, opacity: 1, clipped: true, visible: true, _fade: true, ...spec };
     if (L.kind === 'photos') { L.viz = 'photos'; L.col = null; return L; }
     if (L.kind === 'samples') { const an = analyticOf(L) || {}; const p0 = (an.props || [])[0]; L.prop = p0 ? p0.id : 'density'; L.viz = p0 ? p0.viz : (an.viz || 'stand'); L.col = defaultCol(L); return L; }
+    if (L.kind === 'features') { const an = analyticOf(L) || {}; const p0 = (an.props || [])[0]; L.prop = p0 ? p0.id : null; L.viz = p0 && p0.viz ? p0.viz : 'rgb'; L.col = VIZ[L.viz] && VIZ[L.viz].index ? defaultCol(L) : null; if (an.opacity != null) L.opacity = an.opacity; return L; }
     if (!L.viz) { const o = productVizOptions(L); L.viz = o[0] || 'rgb'; }
     L.col = VIZ[L.viz] && VIZ[L.viz].index ? defaultCol(L) : null;
     return L;
@@ -221,7 +232,10 @@ function mount(root, DATA, opts = {}) {
   // ----- analytics (stand count & co.) -----
   const analyticOf = L => (L && L.survey && L.kind !== 'sat' && L.kind !== 'photos') ? ((surveyOf(L) || {}).analytics || []).find(a => a.id === L.product) || null : null;
   const isSamples = L => L.kind === 'samples';
+  const isFeatures = L => L.kind === 'features';
   const samplePoints = L => { const a = analyticOf(L); return a ? (a.points || []) : []; };
+  const featureList = L => { const a = analyticOf(L); return a ? (a.features || []) : []; };
+  const itemsOf = L => isFeatures(L) ? featureList(L) : shownPoints(L);   // the things a value belongs to: sample points or vector features
   const sampleProp = L => { const a = analyticOf(L); const props = (a && a.props) || []; return props.find(p => p.id === L.prop) || props[0] || { id: 'density', label: 'Value', viz: L.viz }; };
   const sampleValue = (L, pt) => pt[sampleProp(L).id];
   const exKey = (L, pt) => `${L.fid}|${L.survey}|${L.product}|${pt.i}`;
@@ -229,7 +243,7 @@ function mount(root, DATA, opts = {}) {
   const shownPoints = L => samplePoints(L).filter(pt => !(L.hideExcluded && isExcluded(L, pt)));
   const SHIST = {};
   function sampleHist(L) {
-    const pts = shownPoints(L); const sig = `${L.fid}|${L.survey}|${L.product}|${L.prop}|${pts.map(p => p.i).join(',')}`;
+    const pts = itemsOf(L); const sig = `${L.fid}|${L.survey}|${L.product}|${L.prop}|${isFeatures(L) ? pts.length : pts.map(p => p.i).join(',')}`;
     if (SHIST[sig]) return SHIST[sig];
     const counts = new Uint32Array(256); let total = 0, sum = 0;
     for (const pt of pts) { const g = clamp(Math.round(v2g(L, sampleValue(L, pt))), 0, 255); counts[g]++; total++; sum += g; }
@@ -290,7 +304,7 @@ function mount(root, DATA, opts = {}) {
     x.putImageData(id, 0, 0); return MASK_CANVAS[k] = c;
   }
   async function prepareLayer(L) {
-    if (isPhotos(L) || isSamples(L)) return true;
+    if (isPhotos(L) || isSamples(L) || isFeatures(L)) return true;
     const key = imgKey(L); if (!hasImg(key)) return false;
     const im = await loadImage(key); const w = im.naturalWidth, h = im.naturalHeight;
     const m = await getMask(L, w, h); const mk = `${maskId(L)}|${w}|${h}`;
@@ -309,12 +323,12 @@ function mount(root, DATA, opts = {}) {
   }
   const PREPARING = new Set();
   function ensure(L) {
-    if (isPhotos(L) || isSamples(L)) return; if (!hasImg(imgKey(L))) return; const key = imgKey(L) + '|' + L.viz; if (PREPARING.has(key)) return; PREPARING.add(key);
+    if (isPhotos(L) || isSamples(L) || isFeatures(L)) return; if (!hasImg(imgKey(L))) return; const key = imgKey(L) + '|' + L.viz; if (PREPARING.has(key)) return; PREPARING.add(key);
     prepareLayer(L).then(ok => { PREPARING.delete(key); if (ok) { dirty = true; if (state.view === 'layer' && state.detailUid === L.uid) render(true); } })
       .catch(err => { PREPARING.delete(key); console.error(err); toast('This layer could not be decoded in your browser.'); });
   }
-  function ready(L) { if (isPhotos(L) || isSamples(L)) return true; const key = imgKey(L); if (!hasImg(key)) return false; const im = IMG[key]; if (!im) return false; const mk = `${maskId(L)}|${im.naturalWidth}|${im.naturalHeight}`; return VIZ[L.viz] && VIZ[L.viz].index ? !!(IDX[key] && HIST[`${key}|${mk}`]) : !!COMPOSITE[key]; }
-  function histOf(L) { if (isSamples(L)) return sampleHist(L); const key = imgKey(L), im = IMG[key]; if (!im) return null; return HIST[`${key}|${maskId(L)}|${im.naturalWidth}|${im.naturalHeight}`] || null; }
+  function ready(L) { if (isPhotos(L) || isSamples(L) || isFeatures(L)) return true; const key = imgKey(L); if (!hasImg(key)) return false; const im = IMG[key]; if (!im) return false; const mk = `${maskId(L)}|${im.naturalWidth}|${im.naturalHeight}`; return VIZ[L.viz] && VIZ[L.viz].index ? !!(IDX[key] && HIST[`${key}|${mk}`]) : !!COMPOSITE[key]; }
+  function histOf(L) { if (isSamples(L) || isFeatures(L)) return sampleHist(L); const key = imgKey(L), im = IMG[key]; if (!im) return null; return HIST[`${key}|${maskId(L)}|${im.naturalWidth}|${im.naturalHeight}`] || null; }
 
   // ---------- colorization ----------
   function g2v(L, g) { const [lo, hi] = vizRange(L); return lo + g / 255 * (hi - lo); }
@@ -354,10 +368,10 @@ function mount(root, DATA, opts = {}) {
     COLOR_CACHE.set(sig, cv); return cv;
   }
   function layerStats(L) {
-    if (isSamples(L)) { const pts = shownPoints(L); const vals = pts.map(p => sampleValue(L, p)); const h = sampleHist(L); const { edges } = buildLUT(L, h); const { min, max } = L.col; const rows = [];
+    if (isSamples(L) || isFeatures(L)) { const pts = itemsOf(L); const vals = pts.map(p => sampleValue(L, p)).filter(x => typeof x === 'number'); const h = sampleHist(L); const { edges } = buildLUT(L, h); const { min, max } = L.col; const rows = [];
       for (let i = 0; i < edges.length - 1; i++) rows.push({ lo: edges[i], hi: edges[i + 1], count: 0 });
       for (const v of vals) { if (v < min || v > max) continue; let i = 0; while (i < rows.length - 1 && v >= edges[i + 1]) i++; rows[i].count++; }
-      return { rows, acres: FIELD[L.fid].acres, avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0, app: 0, count: vals.length, samples: true }; }
+      return { rows, acres: FIELD[L.fid].acres, avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0, app: 0, count: vals.length, samples: true, noun: isFeatures(L) ? ((analyticOf(L) || {}).noun || 'feature') : 'sample' }; }
     const h = histOf(L); if (!h) return null; const key = imgKey(L); const { edges } = buildLUT(L, h); const { min, max } = L.col; const rows = [];
     for (let i = 0; i < edges.length - 1; i++) rows.push({ lo: edges[i], hi: edges[i + 1], count: 0 });
     for (let g = 0; g < 256; g++) { const v = g2v(L, g), n = h.counts[g]; if (!n || v < min || v > max) continue; let i = 0; while (i < rows.length - 1 && v >= edges[i + 1]) i++; rows[i].count += n; }
@@ -372,7 +386,7 @@ function mount(root, DATA, opts = {}) {
     return indexes.map(zi => { const z = f.zones[zi]; const k = `${key}|${maskId(L)}|${zi}`; if (ZSTAT[k] === undefined) { const zr = zoneRaster(f.id, zi, idx.w, idx.h); let n = 0, s = 0; for (let i = 0; i < zr.length; i++) if (zr[i] && m[i]) { n++; s += idx.gray[i]; } ZSTAT[k] = n ? s / n : null; }
       return { name: zoneName(f.id, zi), acres: z.acres, avg: ZSTAT[k] == null ? null : g2v(L, ZSTAT[k]) }; });
   }
-  const fmtV = (L, v) => v == null ? '—' : Math.abs(v) >= 100000 ? Math.round(v / 1000) + 'k' : Math.abs(v) >= 1000 ? (v / 1000).toPrecision(3) + 'k' : v.toFixed(decOf(L));   // 0.38 · 7.55 · 1.96k, as FieldAgent prints them
+  const fmtV = (L, v) => { if (v == null) return '—'; if (Math.abs(v) >= 100000) return Math.round(v / 1000) + 'k'; if (Math.abs(v) >= 1000) return (v / 1000).toPrecision(3) + 'k'; const vz = VIZ[L.viz] || {}; if (vz.sig) { const t = Number(v).toPrecision(vz.sig); return vz.trim ? String(Number(t)) : t; } const t = v.toFixed(decOf(L)); return vz.trim && t.includes('.') ? t.replace(/\.?0+$/, '') : t; };   // 0.38 · 7.55 · 1.96k, as FieldAgent prints them
 
   // ---------- DOM skeleton ----------
   root.classList.add('fa-app'); if (isTouch) root.classList.add('touch');
@@ -459,10 +473,25 @@ function mount(root, DATA, opts = {}) {
     if (fieldMode) {
       const r = rectOf(f.rect); const bp = pathOf([f.ring]); const Ls = layers();
       for (let i = Ls.length - 1; i >= 0; i--) {
-        const L = Ls[i]; if (!L.visible || L.opacity <= 0 || isPhotos(L) || isSamples(L)) continue;
+        const L = Ls[i]; if (!L.visible || L.opacity <= 0 || isPhotos(L) || isSamples(L) || isFeatures(L)) continue;
         if (!ready(L)) { if (!o.snapshot) ensure(L); continue; }
         const src = VIZ[L.viz] && VIZ[L.viz].index ? colorizedCanvas(L) : COMPOSITE[imgKey(L)]; if (!src) continue;
-        cx2.save(); cx2.globalAlpha = L.opacity; if (L.clipped || L.kind === 'sat') cx2.clip(bp); cx2.drawImage(src, r.x, r.y, r.w, r.h); cx2.restore();
+        cx2.save(); cx2.globalAlpha = L.opacity * fadeOf(L, o); if (L.clipped || L.kind === 'sat') cx2.clip(bp); cx2.drawImage(src, r.x, r.y, r.w, r.h); cx2.restore();
+      }
+      // vector analytics: contour lines, flow lines, depressions — coloured per feature by the layer's colorization, or by the
+      // style FieldAgent exported with them (flow lines: #009dff, wider for the bigger channels)
+      for (let i = Ls.length - 1; i >= 0; i--) {
+        const L = Ls[i]; if (!isFeatures(L) || !L.visible || L.opacity <= 0) continue; const an = analyticOf(L) || {}; const feats = an.features || []; const st = an.style || {};
+        const colorize = !!(L.col && VIZ[L.viz] && VIZ[L.viz].index); const lut = colorize ? buildLUT(L, histOf(L)).lut : null; const poly = an.geom === 'polygon';
+        cx2.save(); cx2.globalAlpha = L.opacity * fadeOf(L, o); cx2.lineJoin = 'round'; cx2.lineCap = 'round';
+        for (const ft of feats) {
+          const p = new Path2D(); for (const ring of ft.wr) { ring.forEach(([wx, wy], k) => { const [x, y] = P.toScreen(wx, wy); k ? p.lineTo(x, y) : p.moveTo(x, y); }); if (poly) p.closePath(); }
+          let col = ft.color || st.color || '#009dff';
+          if (lut) { const val = sampleValue(L, ft); if (typeof val === 'number') { const packed = lut[clamp(Math.round(v2g(L, val)), 0, 255)]; if (!packed) continue; col = unpackCss(packed); } }
+          if (poly) { cx2.fillStyle = col; cx2.fill(p, 'evenodd'); cx2.lineWidth = st.outline || 1; cx2.strokeStyle = st.outlineColor || 'rgba(255,255,255,.55)'; cx2.stroke(p); }
+          else { cx2.lineWidth = (ft.width || st.width || 2) * (o.snapshot ? 0.8 : 1); cx2.strokeStyle = col; cx2.stroke(p); }
+        }
+        cx2.restore();
       }
       // zones: only the ones selected in the Zones layer view, white like FieldAgent
       const on = zonesOn(f.id); const editing = state.view === 'zone' ? state.zoneEdit : null;
@@ -471,7 +500,7 @@ function mount(root, DATA, opts = {}) {
       // photo dots on top, like FieldAgent's scatterplot layer
       for (let i = Ls.length - 1; i >= 0; i--) {
         const L = Ls[i]; if (!isPhotos(L) || !L.visible) continue; const s = surveyOf(L); const pos = s.photos.positions || []; const rad = dotRadius(v.z) * (o.snapshot ? 0.8 : 1);
-        cx2.save(); cx2.globalAlpha = L.opacity; cx2.fillStyle = s.dotColor; cx2.strokeStyle = 'rgba(255,255,255,.95)'; cx2.lineWidth = 1.5;
+        cx2.save(); cx2.globalAlpha = L.opacity * fadeOf(L, o); cx2.fillStyle = s.dotColor; cx2.strokeStyle = 'rgba(255,255,255,.95)'; cx2.lineWidth = 1.5;
         for (const p of pos) { const [x, y] = P.toScreen(p[0], p[1]); if (x < -10 || y < -10 || x > W + 10 || y > H + 10) continue; cx2.beginPath(); cx2.arc(x, y, rad, 0, Math.PI * 2); cx2.fill(); cx2.stroke(); }
         cx2.lineWidth = 2.5;
         for (const smp of photoSamples(L)) { const [x, y] = P.toScreen(smp.w[0], smp.w[1]); cx2.beginPath(); cx2.arc(x, y, rad + 1.5, 0, Math.PI * 2); cx2.fill(); cx2.stroke(); }
@@ -482,7 +511,7 @@ function mount(root, DATA, opts = {}) {
       for (let i = Ls.length - 1; i >= 0; i--) {
         const L = Ls[i]; if (!isSamples(L) || !L.visible) continue; const { lut } = buildLUT(L, histOf(L));
         const R = bubbleRadius(v.z) * (o.snapshot ? 0.85 : 1);
-        cx2.save(); cx2.globalAlpha = L.opacity; cx2.font = `700 ${Math.max(9, Math.round(R * 0.6))}px Roboto, "Helvetica Neue", Arial, sans-serif`; cx2.textAlign = 'center'; cx2.textBaseline = 'middle';
+        cx2.save(); cx2.globalAlpha = L.opacity * fadeOf(L, o); cx2.font = `700 ${Math.max(9, Math.round(R * 0.6))}px Roboto, "Helvetica Neue", Arial, sans-serif`; cx2.textAlign = 'center'; cx2.textBaseline = 'middle';
         for (const pt of shownPoints(L)) {
           const [x, y] = P.toScreen(pt.w[0], pt.w[1]); if (x < -R || y < -R || x > W + R || y > H + R) continue;
           const val = sampleValue(L, pt); const packed = lut[clamp(Math.round(v2g(L, val)), 0, 255)]; const col = packed ? unpackCss(packed) : '#7a7a7a'; const ex = isExcluded(L, pt);
@@ -557,7 +586,7 @@ function mount(root, DATA, opts = {}) {
     if (hasImg(`${fid}_${s.key}_elev`)) mk({ kind: 'drone', survey: s.key, product: 'elev' }, false);
     const qt = (s.quicktiles || []).find(q => hasImg(`${fid}_${s.key}_${q.id}`)); if (qt) mk({ kind: 'drone', survey: s.key, product: qt.id }, false);
     const sat = SAT.items.slice().sort((a, b) => satCode(b.date).localeCompare(satCode(a.date))).find(it => hasImg(`${fid}_sat${satCode(it.date)}_ndvi`)); if (sat) mk({ kind: 'sat', date: satCode(sat.date), product: 'ndvi', viz: 'ndvi' }, false);
-    for (const sv of f.surveys) for (const a of (sv.analytics || [])) { const avail = a.kind === 'raster' ? hasImg(`${fid}_${sv.key}_${a.id}`) : !!(a.points && a.points.length); if (avail) mk({ kind: a.kind === 'samples' ? 'samples' : 'drone', survey: sv.key, product: a.id }, a.kind === 'raster'); }
+    for (const sv of f.surveys) for (const a of (sv.analytics || [])) { const avail = a.kind === 'raster' ? hasImg(`${fid}_${sv.key}_${a.id}`) : a.kind === 'features' ? !!(a.features && a.features.length) : !!(a.points && a.points.length); if (avail) mk({ kind: a.kind === 'samples' ? 'samples' : a.kind === 'features' ? 'features' : 'drone', survey: sv.key, product: a.id }, a.kind === 'raster'); }
     return out;
   }
   function openField(fid, animate = true) {
@@ -649,7 +678,7 @@ function mount(root, DATA, opts = {}) {
     const list = s.bands === 'rgb' ? [mk('vari', 'VARI Mosaic'), mk('elev', 'Elevation Mosaic'), mk('rgb', 'RGB Mosaic')] : [mk('ms', 'Multispectral Mosaic', s.bands === 'd4k' ? '5 bands' : '4 bands'), mk('elev', 'Elevation Mosaic'), mk('rgb', 'RGB Mosaic')];
     (s.quicktiles || []).forEach(q => list.push({ id: q.id, name: q.name, key: `${f.id}_${s.key}_${q.id}`, avail: hasImg(`${f.id}_${s.key}_${q.id}`), qt: true }));
     if ((s.analytics || []).length) { const kept = list.filter(p => p.avail);   // an analytics flight lists only what was produced for it
-      s.analytics.forEach(a => kept.push({ id: a.id, name: a.name, key: a.kind === 'raster' ? `${f.id}_${s.key}_${a.id}` : null, avail: a.kind === 'raster' ? hasImg(`${f.id}_${s.key}_${a.id}`) : !!(a.points && a.points.length), analytic: a.kind, kind: a.kind === 'samples' ? 'samples' : 'drone' }));
+      s.analytics.forEach(a => kept.push({ id: a.id, name: a.name, key: a.kind === 'raster' ? `${f.id}_${s.key}_${a.id}` : null, avail: a.kind === 'raster' ? hasImg(`${f.id}_${s.key}_${a.id}`) : a.kind === 'features' ? !!(a.features && a.features.length) : !!(a.points && a.points.length), analytic: a.kind === 'features' ? (a.geom === 'polygon' ? 'polygons' : 'lines') : a.kind, kind: a.kind === 'samples' ? 'samples' : a.kind === 'features' ? 'features' : 'drone' }));
       return kept; }
     return list;
   }
@@ -657,7 +686,7 @@ function mount(root, DATA, opts = {}) {
     const f = curField(); const Ls = layers(); const on = (kind, a, b) => Ls.some(L => L.kind === kind && (kind === 'sat' ? L.date === a && L.product === b : kind === 'photos' ? L.survey === a : L.survey === a && L.product === b));
     const surveys = state.sources.surveys ? f.surveys.map(s => { const ph = s.photos || {}; const phAvail = !!(ph.positions && ph.positions.length);
       return `<section class="card"><div class="group-head">${icon('i-drone', 'ico sm')}<div class="name"><b>${esc(s.name || s.date)}</b>${s.name ? `<span>${esc(s.date)} · ${esc(SENSOR_LABEL[s.bands] || s.bands)}</span>` : ''}</div><button class="iconbtn" type="button" data-blocked="Flight notes" aria-label="Notes">${icon('i-doc', 'ico sm')}</button><button class="iconbtn" type="button" data-blocked="Survey options" aria-label="More">${icon('i-more', 'ico sm')}</button></div>
-      ${surveyProducts(f, s).map(p => p.avail ? `<div class="prod-row" data-act="pick" data-survey="${s.key}" data-product="${p.id}" data-kind="${p.kind || 'drone'}" role="button" tabindex="0" aria-pressed="${on(p.kind || 'drone', s.key, p.id)}"><span class="prod-ico">${icon(p.analytic === 'raster' ? 'i-heatmap' : p.analytic === 'samples' ? 'i-samples' : p.qt ? 'i-grid' : 'i-mosaic', 'ico sm')}</span><div class="prod-name"><b>${esc(p.name)}</b>${p.sub ? `<span>${esc(p.sub)}</span>` : ''}</div><span class="radio${on(p.kind || 'drone', s.key, p.id) ? ' on' : ''}"></span></div>`
+      ${surveyProducts(f, s).map(p => p.avail ? `<div class="prod-row" data-act="pick" data-survey="${s.key}" data-product="${p.id}" data-kind="${p.kind || 'drone'}" role="button" tabindex="0" aria-pressed="${on(p.kind || 'drone', s.key, p.id)}"><span class="prod-ico">${icon(p.analytic === 'raster' ? 'i-heatmap' : p.analytic === 'samples' ? 'i-samples' : p.analytic === 'polygons' ? 'i-polygon' : p.analytic === 'lines' ? 'i-lines' : p.qt ? 'i-grid' : 'i-mosaic', 'ico sm')}</span><div class="prod-name"><b>${esc(p.name)}</b>${p.sub ? `<span>${esc(p.sub)}</span>` : ''}</div><span class="radio${on(p.kind || 'drone', s.key, p.id) ? ' on' : ''}"></span></div>`
         : `<div class="prod-row off" title="Not included in this sample"><span class="prod-ico">${icon(p.qt ? 'i-grid' : 'i-mosaic', 'ico sm')}</span><div class="prod-name"><b>${esc(p.name)}</b><span class="na">Not in this sample</span></div><span class="radio off"></span></div>`).join('')}
       ${phAvail ? `<div class="prod-row photos" data-act="pickphotos" data-survey="${s.key}" role="button" tabindex="0" aria-pressed="${on('photos', s.key)}"><span class="bar" style="background:${s.dotColor}"></span><span class="prod-ico">${icon('i-camera', 'ico sm')}</span><div class="prod-name"><b>Photo Dots</b><span>${(ph.count || ph.positions.length).toLocaleString()} photos</span></div><span class="radio${on('photos', s.key) ? ' on' : ''}"></span></div>`
         : `<div class="prod-row photos off" title="Photo positions are not included in this sample"><span class="bar" style="background:${s.dotColor}"></span><span class="prod-ico">${icon('i-camera', 'ico sm')}</span><div class="prod-name"><b>Photo Dots</b><span>${(ph.count || 0).toLocaleString()} photos</span><span class="na">Not in this sample</span></div><span class="radio off"></span></div>`}
@@ -687,7 +716,7 @@ function mount(root, DATA, opts = {}) {
   function chipsHtml(L) { const { min, max } = L.col; return `<span class="chip" style="left:${pct(L, min)}%">${fmtV(L, min)}</span><span class="chip" style="left:${pct(L, max)}%">${fmtV(L, max)}</span>`; }
   function binTableHtml(L) {
     if (!state.binTable) return ''; const stats = layerStats(L); if (!stats) return ''; const colors = binColors(L);
-    return `<table class="bin-table">${stats.rows.map((r, i) => `<tr><td><span class="sw" style="background:${rgbCss(colors[i])}"></span>${fmtV(L, r.lo)} – ${fmtV(L, r.hi)}${VIZ[L.viz].unit || ''}</td><td>${stats.samples ? `${r.count} sample${r.count === 1 ? '' : 's'}` : `${fmtAc(r.count * stats.app)} ac`}</td></tr>`).join('')}</table>`;
+    return `<table class="bin-table">${stats.rows.map((r, i) => `<tr><td><span class="sw" style="background:${rgbCss(colors[i])}"></span>${fmtV(L, r.lo)} – ${fmtV(L, r.hi)}${VIZ[L.viz].unit || ''}</td><td>${stats.samples ? `${r.count} ${stats.noun || 'sample'}${r.count === 1 ? '' : 's'}` : `${fmtAc(r.count * stats.app)} ac`}</td></tr>`).join('')}</table>`;
   }
   function patchColorization(L) {
     const h = $('hist'); if (h) h.outerHTML = histSvg(L);
@@ -751,6 +780,7 @@ function mount(root, DATA, opts = {}) {
         ${opacity}<button class="delete-bar" type="button" disabled>Delete</button></div>`;
     }
     if (isSamples(L)) return renderSamplesLayer(L);
+    if (isFeatures(L)) return renderFeaturesLayer(L);
     const an = analyticOf(L);
     const s = surveyOf(L); const isQt = L.product.startsWith('qt_'); const tif = (s.tif || {})[L.product === 'ms' ? 'ms' : L.product];
     const vizNote = VIZ[L.viz].formula ? `<div class="tip">${esc(VIZ[L.viz].formula)}</div>` : VIZ[L.viz].band ? `<div class="tip">Single band, stretched to this mosaic's range ${fmtV(L, vizRange(L)[0])}–${fmtV(L, vizRange(L)[1])}${vizRange(L)[1] > 50 ? ' (digital numbers)' : ' reflectance'}</div>` : '';
@@ -768,6 +798,41 @@ function mount(root, DATA, opts = {}) {
       <button class="delete-bar" type="button" disabled>Delete</button>
     </div>`;
   }
+  // Tassel Count → Yield Estimate: needs a Kernel Count activity of the field (Field Activities → + → Kernel Count). The demo
+  // uses the common conversion tassels/acre × kernels/ear ÷ 90,000 kernels per bushel; FieldAgent's own factor may differ.
+  const KERNELS_PER_BUSHEL = 90000;
+  function kernelCounts(fid) { const acts = ((state.ext || {}).activities || {})[fid] || []; return acts.filter(a => a.type === 'Kernel Count' && (a.ears || []).some(e => +e.rows > 0 && +e.per > 0)).map(a => { const ears = a.ears.filter(e => +e.rows > 0 && +e.per > 0); const kpe = ears.reduce((t, e) => t + (+e.rows) * (+e.per), 0) / ears.length; return { applied: a.applied, ears: ears.length, kpe }; }); }
+  function yieldCardHtml(L, an) {
+    const kcs = kernelCounts(L.fid); const docs = (opts.docsBase || 'https://support.senterasensors.com') + '/fieldagent/analytics/tassel-count';
+    if (!kcs.length) return `<section class="card"><div class="card-title">Yield Estimate</div><div class="tip" style="margin-top:2px">Yield estimation requires a kernel count activity.<br><b>Please create one.</b></div><div class="tip"><a href="${esc(docs)}" target="_blank" rel="noopener" style="color:#fff;text-decoration:underline">Click here</a> to learn more about yield estimates.</div>${tip('yield', 'A tassel count becomes a yield estimate once the field has a <b>Kernel Count</b> activity in its crop season (Field Activities → + → Kernel Count, at least three ears). FieldAgent then combines tassels per acre with kernels per ear.')}</section>`;
+    const sel = clamp(L.kc || 0, 0, kcs.length - 1); const kc = kcs[sel]; const st = layerStats(L); const bu = st.avg * kc.kpe / KERNELS_PER_BUSHEL;
+    const fmtDate = iso => iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(5, 7)}-${iso.slice(8, 10)}-${iso.slice(0, 4)}` : (iso || '');
+    const label = k => `Kernel Count · ${fmtDate(k.applied) || 'no date'} · ${k.ears} ${k.ears === 1 ? 'ear' : 'ears'}`;
+    const menu = state.menu === 'ykc' ? `<div class="menu" role="listbox">${kcs.map((k, i) => `<div class="opt${i === sel ? ' sel' : ''}" data-act="ykc" data-idx="${i}" role="option">${esc(label(k))}</div>`).join('')}</div>` : '';
+    return `<section class="card"><div class="card-title">Yield Estimate</div>
+      <div class="select${state.menu === 'ykc' ? ' open' : ''}"><span class="label">Kernel Count Activity</span><button class="value" type="button" data-act="menu" data-menu="ykc" aria-haspopup="listbox" aria-expanded="${state.menu === 'ykc'}"><span>${esc(label(kc))}</span>${icon('i-drop')}</button>${menu}</div>
+      <div class="kv-block"><div class="k">Kernels per ear</div><div class="v">${Math.round(kc.kpe).toLocaleString()}</div><div class="k">Estimated Yield</div><div class="v"><b style="font-size:16px">${Math.round(bu).toLocaleString()} bu/ac</b></div></div>
+      <div class="tip">${fmtV(L, st.avg)} tassels per acre × ${Math.round(kc.kpe)} kernels per ear ÷ ${KERNELS_PER_BUSHEL.toLocaleString()} kernels per bushel — the demo's conversion; FieldAgent's estimate can use a different factor.</div>
+      ${tip('yield2', 'Excluding samples or changing the kernel count updates the estimate. Re-enter kernel counts later in the season if the ears fill differently than expected.')}</section>`;
+  }
+  function renderFeaturesLayer(L) {
+    const f = curField(); const an = analyticOf(L) || {}; const prop = sampleProp(L); const props = an.props || []; const colorize = !!(L.col && VIZ[L.viz] && VIZ[L.viz].index);
+    const propMenu = state.menu === 'sprop' ? `<div class="menu" role="listbox">${props.map(pr => `<div class="opt${pr.id === L.prop ? ' sel' : ''}" data-act="sprop" data-prop="${esc(pr.id)}" role="option" aria-selected="${pr.id === L.prop}">${esc(pr.label)}</div>`).join('')}</div>` : '';
+    return head(f.name, { back: 'field' }) + `<div class="panel-scroll">
+      <section class="card"><div class="card-title">Details</div>
+        <div class="kv-block"><div class="k">Name</div><div class="v">${esc(an.name || layerTitle(L))}</div><div class="k">Survey</div><div class="v">${esc(layerSub(L).replace(' • ', ' · '))}</div></div>
+        ${props.length ? `<div class="select${state.menu === 'sprop' ? ' open' : ''}"><span class="label">Display Property:</span><button class="value" type="button" data-act="menu" data-menu="sprop" aria-haspopup="listbox" aria-expanded="${state.menu === 'sprop'}"><span>${esc(prop.label)}</span>${icon('i-drop')}</button>${propMenu}</div>` : ''}
+        ${an.note ? `<div class="tip">${esc(an.note)}</div>` : ''}
+        ${tip('features', `${(an.features || []).length.toLocaleString()} ${esc(an.noun || 'feature')}s drawn from the survey. ${colorize ? `Each one is coloured by its <b>${esc(prop.label)}</b> with the bins and scale below.` : 'They keep the style the product was delivered with.'}`)}
+      </section>
+      ${colorize ? colorizationHtml(L) : ''}
+      <section class="card"><div class="card-title">Opacity</div><div class="slider-row"><input class="fa-range" type="range" min="0" max="100" step="1" value="${Math.round(L.opacity * 100)}" data-act="opacity" aria-label="Opacity"></div><div class="slider-caption">${Math.round(L.opacity * 100)}%</div></section>
+      <section class="card"><div class="card-title">Download Files</div><div class="dl-sub">Layer Data</div>
+        ${(an.downloads || ['GeoJSON', 'CSV', 'Shapefile']).map(fmt => `<div class="dl-row"><div class="grow"><b>${esc(fmt)}</b></div><button class="dl-btn" type="button" data-act="download" data-what="features" data-fmt="${esc(fmt)}" aria-label="Download ${esc(fmt)}">${icon('i-download', 'ico sm')}</button></div>`).join('')}
+        ${tip('fdownload', 'Vector layers export as GeoJSON, CSV or Shapefile for your own GIS — the contour, flow-line and depression geometry with its attributes.')}</section>
+      <button class="delete-bar" type="button" disabled>Delete</button>
+    </div>`;
+  }
   function renderSamplesLayer(L) {
     const f = curField(); const an = analyticOf(L) || {}; const pts = shownPoints(L); const prop = sampleProp(L); const st = layerStats(L); const unit = VIZ[L.viz].unit || '';
     const props = an.props || []; const propMenu = state.menu === 'sprop' ? `<div class="menu" role="listbox">${props.map(pr => `<div class="opt${pr.id === L.prop ? ' sel' : ''}" data-act="sprop" data-prop="${esc(pr.id)}" role="option" aria-selected="${pr.id === L.prop}">${esc(pr.label)}</div>`).join('')}</div>` : '';
@@ -780,9 +845,11 @@ function mount(root, DATA, opts = {}) {
         <div class="cb-row" data-act="hideex" role="checkbox" aria-checked="${!!L.hideExcluded}" tabindex="0"><span class="cb${L.hideExcluded ? ' on' : ''}"></span><span class="grow">Hide Excluded Data Points</span></div>
         ${tip('samples', `Every circle on the map is one sample photo, coloured by its ${esc(prop.label)}. Click a circle to open the sample viewer; <b>Display Property</b> switches the value the circles show.`)}
       </section>
+      ${an.yieldEstimate ? yieldCardHtml(L, an) : ''}
       ${colorizationHtml(L)}
+      ${an.opacity ? `<section class="card"><div class="card-title">Opacity</div><div class="slider-row"><input class="fa-range" type="range" min="0" max="100" step="1" value="${Math.round(L.opacity * 100)}" data-act="opacity" aria-label="Opacity"></div><div class="slider-caption">${Math.round(L.opacity * 100)}%</div></section>` : ''}
       <section class="card"><div class="card-title"><span class="grow">Zone Statistics</span><button class="iconbtn" type="button" data-blocked="Zone statistics options" aria-label="More">${icon('i-more', 'ico sm')}</button></div>
-        ${zs.map(z => `<div class="stat-row tri"><div class="bar${z.boundary ? ' boundary' : ''}"></div><div class="grow"><b>${esc(z.name)}</b><span>${fmtAc(z.acres)} ac</span><div class="mam"><div><b>${fmtV(L, z.min)}${z.min == null ? '' : unit}</b><span>Minimum</span></div><div><b>${fmtV(L, z.avg)}${z.avg == null ? '' : unit}</b><span>Average</span></div><div><b>${fmtV(L, z.max)}${z.max == null ? '' : unit}</b><span>Maximum</span></div></div></div></div>`).join('')}
+        ${zs.map((z, zi) => `<div class="stat-row tri" data-zi="${zi}"><div class="bar${z.boundary ? ' boundary' : ''}"></div><div class="grow"><b>${esc(z.name)}</b><span>${fmtAc(z.acres)} ac</span><div class="mam"><div><b>${fmtV(L, z.min)}${z.min == null ? '' : unit}</b><span>Minimum</span></div><div><b>${fmtV(L, z.avg)}${z.avg == null ? '' : unit}</b><span>Average</span></div><div><b>${fmtV(L, z.max)}${z.max == null ? '' : unit}</b><span>Maximum</span></div></div></div></div>`).join('')}
         ${tip('szstats', 'Minimum, average and maximum of the samples that fall inside each zone — the same numbers FieldAgent prints for the individual counts.')}</section>
       <section class="card"><div class="card-title">Download Files</div><div class="dl-sub">Layer Data</div>
         ${(an.downloads || ['GeoJSON', 'CSV', 'Shapefile']).map(fmt => `<div class="dl-row"><div class="grow"><b>${esc(fmt)}</b></div><button class="dl-btn" type="button" data-act="download" data-what="samples" data-fmt="${esc(fmt)}" aria-label="Download ${esc(fmt)}">${icon('i-download', 'ico sm')}</button></div>`).join('')}
@@ -885,7 +952,7 @@ function mount(root, DATA, opts = {}) {
   // FieldAgent's report names the map after the product ("Multispectral Mosaic"), whatever visualization is on it
   function reportLayerName(L) { if (!L) return 'Map'; if (L.kind === 'sat') return layerTitle(L); if (isPhotos(L)) return 'Photo Dots'; if (analyticOf(L) || L.product.startsWith('qt_')) return layerTitle(L); return PRODUCT_NAME[L.product] || L.product; }
   function renderReportPage() {
-    const r = state.report; const f = curField(); const top = layers().find(L => L.visible && !isSamples(L) && VIZ[L.viz] && VIZ[L.viz].index && ready(L));
+    const r = state.report; const f = curField(); const top = layers().find(L => L.visible && !isSamples(L) && !isFeatures(L) && VIZ[L.viz] && VIZ[L.viz].index && ready(L));
     const editBox = (label, value, act, textarea) => `<div class="editbox"><span class="lab">${label}</span>${textarea ? `<textarea data-act="${act}" placeholder="Click here and start typing to add your ${label.replace('Edit ', '').toLowerCase()}">${esc(value)}</textarea>` : `<input type="text" data-act="${act}" value="${esc(value)}" placeholder="Click here and start typing to edit your ${label.replace('Edit ', '').toLowerCase()}">`}<div class="edit-actions"><button type="button" data-act="rcancel" data-what="${act}">${icon('i-close')}Cancel</button><button type="button" data-act="rsave" data-what="${act}">${icon('i-check')}Save</button></div></div>`;
     const stats = top ? layerStats(top) : null; const unit = top ? (VIZ[top.viz].unit || '') : '';
     // legend, as FieldAgent prints it: a bar of equal segments in the class colours right under the map, each segment
@@ -938,10 +1005,10 @@ function mount(root, DATA, opts = {}) {
   // ---------- photo viewer ----------
   function firstBand(L, smp, prefer) { const want = prefer || DEFAULT_BAND[surveyOf(L).bands] || 'RGB'; if (smp.img && smp.img[want]) return want; const tabs = BAND_TABS[surveyOf(L).bands] || ['RGB']; return tabs.find(b => smp.img && smp.img[b]) || Object.keys(smp.img || {})[0] || want; }
   function openPhoto(uid, idx) { const L = findLayer(uid); if (!L) return; const smp = photoSamples(L)[idx]; if (!smp) return; state.photo = { uid, idx, band: firstBand(L, smp), meta: false, sub: {}, zoom: 1 }; renderPhoto(); dirty = true; emit('photo_opened', { survey: L.survey, photo: smp.i }); }
-  function closePhoto() { state.photo = null; modalEl.innerHTML = ''; dirty = true; }
+  function closePhoto() { const was = state.photo; state.photo = null; modalEl.innerHTML = ''; dirty = true; if (was) emit(was.kind === 'sample' ? 'sample_closed' : 'photo_closed'); }
   function openSample(uid, idx) { const L = findLayer(uid); if (!L) return; const pt = samplePoints(L)[idx]; if (!pt) return; const band = pt.img && !pt.img.ANNOTATION ? Object.keys(pt.img)[0] : 'ANNOTATION'; state.photo = { uid, idx, band, kind: 'sample', meta: false, sub: {}, zoom: 1 }; renderPhoto(); dirty = true; emit('sample_opened', { index: pt.i, file: pt.file }); }
   function renderSample(p) {
-    const L = findLayer(p.uid); const pts = samplePoints(L); const pt = pts[p.idx]; const f = curField(); const tabs = ['ANNOTATION', 'ANNOTATION 2']; const key = pt.img && pt.img[p.band]; const ex = isExcluded(L, pt);
+    const L = findLayer(p.uid); const pts = samplePoints(L); const pt = pts[p.idx]; const f = curField(); const an = analyticOf(L) || {}; const tabs = an.tabs || ['ANNOTATION', 'ANNOTATION 2']; const key = pt.img && pt.img[p.band]; const ex = isExcluded(L, pt);
     const withImg = pts.filter(x => x.img).map(x => x.i); const rangeTxt = withImg.length ? `${withImg[0]}–${withImg[withImg.length - 1]}` : '';
     modalEl.innerHTML = `<div class="photo-modal" data-act="pclose-bg"><div class="photo-dlg sample-dlg" role="dialog" aria-label="Sample viewer" data-act="pstop">
       <button class="iconbtn white photo-close" type="button" data-act="pclose" aria-label="Close">${icon('i-close')}</button>
@@ -952,7 +1019,7 @@ function mount(root, DATA, opts = {}) {
         <h2>Image Details</h2>
         <div class="kv2"><div class="full"><div class="k">Field</div><div class="v">${esc(f.name)}</div></div></div>
         <h2 class="count-h">Count Details</h2>
-        <div class="kv2"><div><div class="k">Crops Detected</div><div class="v">${fmtV(L, pt.density)} / ac</div></div><div><div class="k">Row Spacing</div><div class="v">${pt.rowSpacing != null ? pt.rowSpacing.toFixed(1) + ' in' : '—'}</div></div></div>
+        <div class="kv2"><div><div class="k">${esc(an.detectedLabel || 'Crops Detected')}</div><div class="v">${fmtV(L, pt.density)} / ac</div></div><div><div class="k">Row Spacing</div><div class="v">${pt.rowSpacing != null ? pt.rowSpacing.toFixed(1) + ' in' : '—'}</div></div></div>
         <h3 class="vb-title">Validator Box Instructions</h3>
         <p class="vb-text">Use the blue box overlay (1/1000th acre) to manually estimate count.</p>
         <ul class="vb-list"><li>${icon('i-rotatecw', 'ico sm')}<span>Rotate to align with rows lengthwise.</span></li><li>${icon('i-move', 'ico sm')}<span>Adjust size to match the box width to the row spacing.</span></li><li>${icon('i-addcircle', 'ico sm')}<span>Drag over a row to perform a count. Count the objects inside the box.</span></li><li>${icon('i-info', 'ico sm')}<span>Multiply count by 1,000 to estimate count per acre.</span></li></ul>
@@ -1094,12 +1161,13 @@ function mount(root, DATA, opts = {}) {
     else if (act === 'showmore') { state.showMore = !state.showMore; render(true); emit('show_more_toggled', { open: state.showMore }); }
     else if (act === 'src') { state.sources[t.dataset.src] = !state.sources[t.dataset.src]; render(true); emit('source_toggled', { source: t.dataset.src, on: state.sources[t.dataset.src] }); if (t.dataset.src === 'satellite' && state.sources.satellite) emit('satellite_opened'); }
     else if (act === 'pick') { const { survey, product } = t.dataset; const kind = t.dataset.kind || 'drone'; const i = layers().findIndex(l => l.kind === kind && l.survey === survey && l.product === product); if (i >= 0) layers().splice(i, 1); else { const nl = newLayer(state.fid, { kind, survey, product }); layers().unshift(nl); ensure(nl); emit('layer_added', { kind, survey, product }); } render(true); }
-    else if (act === 'sprop') { const pr = ((analyticOf(L) || {}).props || []).find(x => x.id === t.dataset.prop); if (pr) { L.prop = pr.id; L.viz = pr.viz; L.col = defaultCol(L); } state.menu = null; render(true); emit('sample_prop_changed', { prop: L.prop }); }
+    else if (act === 'sprop') { const pr = ((analyticOf(L) || {}).props || []).find(x => x.id === t.dataset.prop); if (pr) { L.prop = pr.id; L.viz = pr.viz || 'rgb'; L.col = VIZ[L.viz] && VIZ[L.viz].index ? defaultCol(L) : null; } state.menu = null; render(true); emit('sample_prop_changed', { prop: L.prop }); }
     else if (act === 'hideex') { L.hideExcluded = !L.hideExcluded; render(true); emit('hide_excluded_toggled', { on: !!L.hideExcluded }); }
+    else if (act === 'ykc') { L.kc = +t.dataset.idx; state.menu = null; render(true); emit('yield_activity_selected', { index: L.kc }); }
     else if (act === 'pickphotos') { const { survey } = t.dataset; const i = layers().findIndex(l => l.kind === 'photos' && l.survey === survey); if (i >= 0) layers().splice(i, 1); else { layers().unshift(newLayer(state.fid, { kind: 'photos', survey, product: 'photos' })); emit('layer_added', { kind: 'photos', survey }); } render(true); }
     else if (act === 'picksat') { const { date, product } = t.dataset; const i = layers().findIndex(l => l.kind === 'sat' && l.date === date && l.product === product); if (i >= 0) layers().splice(i, 1); else { const nl = newLayer(state.fid, { kind: 'sat', date, product, viz: product }); layers().unshift(nl); ensure(nl); emit('layer_added', { kind: 'satellite', date, product }); } render(true); }
     else if (act === 'detail') { if (e.target.closest('[data-handle]')) return; state.detailUid = +t.dataset.uid; state.view = 'layer'; state.menu = null; state.binTable = false; render(); emit('layer_details_opened', { layer: layerTitle(findLayer(state.detailUid)) }); }
-    else if (act === 'toggle') { e.stopPropagation(); const l = findLayer(+t.dataset.uid); l.visible = !l.visible; render(true); emit('layer_toggled', { visible: l.visible, layer: layerTitle(l) }); }
+    else if (act === 'toggle') { e.stopPropagation(); const l = findLayer(+t.dataset.uid); l.visible = !l.visible; if (l.visible) l._fade = true; render(true); emit('layer_toggled', { visible: l.visible, layer: layerTitle(l) }); }
     else if (act === 'remove') { e.stopPropagation(); state.layersByField[state.fid] = layers().filter(x => x.uid !== +t.dataset.uid); render(true); emit('layer_removed'); }
     else if (act === 'menu') { state.menu = state.menu === t.dataset.menu ? null : t.dataset.menu; render(true); emit('menu_toggled', { menu: t.dataset.menu, open: state.menu === t.dataset.menu }); }
     else if (act === 'viz') { setViz(L, t.dataset.viz); state.menu = null; ensure(L); render(true); emit('visualization_changed', { viz: t.dataset.viz }); }
@@ -1193,7 +1261,7 @@ function mount(root, DATA, opts = {}) {
     render(); return L;
   }
   return { state, opts, openField, openFields, flyTo, openPhoto, openSample, openLead, render, goto, toast, layers, addLayer, setCollapsed, defaultLayers, root, panel, FIELD, emit, fitField, layerTitle, ready: booted,
-    ui: { icon, esc, head, tip, fmtAc, fmtV, curField, blockedMsg, SENSOR_LABEL, $, analyticOf, samplePoints } };
+    ui: { icon, esc, head, tip, fmtAc, fmtV, curField, blockedMsg, SENSOR_LABEL, $, analyticOf, samplePoints, toScreen: (wx, wy) => toScreen(wx, wy), isSamples } };
 }
 return { mount };
 })();

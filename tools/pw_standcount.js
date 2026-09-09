@@ -9,7 +9,7 @@ const { chromium } = require('playwright');
   const errors = []; page.on('pageerror', e => errors.push('pageerror: ' + e.message.slice(0, 300)));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text().slice(0, 300)); });
   const base = process.env.FA_BASE || 'http://127.0.0.1:8765';
-  await page.goto(base + '/demo.html?s=stand-count&mode=page', { waitUntil: 'load' });
+  await page.goto(base + '/demo.html?s=stand-count&mode=page&speed=8', { waitUntil: 'load' });
   await page.waitForFunction(() => window.FA_TOUR, null, { timeout: 30000 });
   await page.waitForTimeout(1200);
   const info = await page.evaluate(() => ({ fid: FA_APP.state.fid, view: FA_APP.state.view, fields: FA_APP.state.fid, z: +document.querySelector('.fa-app .scalebar, #scalebar') ? 1 : 0, layers: FA_APP.layers().length }));

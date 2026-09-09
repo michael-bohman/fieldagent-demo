@@ -50,6 +50,8 @@
   const scenarios = window.FA_SCENARIOS || {};
   let id = q.get('s') || q.get('scenario') || 'field-view'; if (!scenarios[id]) id = 'field-view';
   document.body.classList.toggle('page', mode === 'page');
+  // ?speed=2 runs every Show me twice as fast, ?speed=0.5 at half speed (handy when checking a demo)
+  const speed = parseFloat(q.get('speed')); if (window.FieldAgentTour && speed > 0 && speed <= 20) FieldAgentTour.speed = speed;
 
   const root = document.getElementById('fa-root'); root.innerHTML = '';
   let tour = null, app = null;
