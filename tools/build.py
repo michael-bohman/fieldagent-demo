@@ -78,7 +78,8 @@ print(f'artifact body {len(art)/1e6:.2f} MB')
 
 # ---- catalogue ----
 scen_ids = re.findall(r"S\['([a-z-]+)'\] = \{\s*id: '[a-z-]+', title: '([^']+)', page: PAGE\.(\w+)", scen)
-pages = dict(re.findall(r"(\w+): '(/fieldagent/[^']+)'", scen))
+space = re.search(r"const SPACE = '([^']+)'", scen).group(1)
+pages = {k: space + v for k, v in re.findall(r"(\w+): P\('([^']+)'\)", scen)}
 rows = ''.join(f"""<tr><td><a href="demo.html?s={sid}&mode=page">{title}</a></td><td><code>{pages.get(pg,'')}</code></td>
 <td><code>demo.html?s={sid}&amp;mode=embed</code></td></tr>""" for sid, title, pg in scen_ids)
 index = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

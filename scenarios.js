@@ -7,34 +7,43 @@ window.FA_SCENARIOS = (function () {
   const F = 'f1';                 // FieldAgent Scout Tier Demo (15.63 ac)
   const MS = 'm3m0904';           // Mavic 3 Multispectral flight, 09-04-2024
   const MS_EARLIER = 'm3m0819';   // same sensor, 08-19-2024
+  // Where the support pages live. The site is support.senterasensors.com; the FieldAgent space is published under SPACE
+  // (today the test space "FieldAgent Documentation Updates" — change this one line when the content moves to /fieldagent).
+  // A page's URL is <site><SPACE>/<group>/<page>: the group segment comes from the SUMMARY.md heading ("View and analyze" →
+  // view-and-analyze), not from the folder the file sits in, and the page segment is the file name without .md.
+  const SITE = 'https://support.senterasensors.com';
+  const SPACE = '/fieldagent-documentation-updates';
+  const P = path => SPACE + path;
   const PAGE = {
-    tour: '/fieldagent/get-started/tour-of-fieldagent-web',
-    find: '/fieldagent/fields/find-a-field',
-    layers: '/fieldagent/view/map-layers',
-    color: '/fieldagent/view/colorization-and-visualization',
-    photos: '/fieldagent/view/photo-dots-and-image-viewer',
-    zones: '/fieldagent/view/zones-and-zone-statistics',
-    sat: '/fieldagent/analytics/satellite-imagery',
-    crop: '/fieldagent/analytics/crop-health-mosaics',
-    order: '/fieldagent/ordering/order-a-mosaic',
-    why: '/fieldagent/ordering/why-cant-i-order',
-    upload: '/fieldagent/imagery/import-imagery-in-fieldagent-web',
-    qt: '/fieldagent/imagery/quicktiles-and-mosaics',
-    report: '/fieldagent/exports/create-a-report',
-    rx: '/fieldagent/exports/zone-rx-prescriptions',
-    download: '/fieldagent/exports/download-and-export-data',
-    elev: '/fieldagent/analytics/elevation-mosaic',
-    qtm: '/fieldagent/imagery/quicktiles-and-mosaics',
-    edit: '/fieldagent/fields/edit-or-delete-a-field',
-    seasons: '/fieldagent/fields/crop-seasons-and-field-activities',
-    share: '/fieldagent/fields/share-a-field',
-    analytics: '/fieldagent/ordering/order-analytics',
-    create: '/fieldagent/fields/create-a-field',
-    standcount: '/fieldagent/analytics/stand-count',
-    tassel: '/fieldagent/analytics/tassel-count',
-    orders: '/fieldagent/ordering/orders-and-flight-tasks',
-    hydrology: '/fieldagent/analytics/elevation-and-hydrology',
+    tour: P('/get-started/tour-of-fieldagent-web'),
+    find: P('/fields/find-a-field'),
+    layers: P('/view-and-analyze/map-layers'),
+    color: P('/view-and-analyze/colorization-and-visualization'),
+    photos: P('/view-and-analyze/photo-dots-and-image-viewer'),
+    zones: P('/view-and-analyze/zones-and-zone-statistics'),
+    sat: P('/analytics/satellite-imagery'),
+    crop: P('/analytics/crop-health-mosaics'),
+    order: P('/ordering/order-a-mosaic'),
+    why: P('/ordering/why-cant-i-order'),
+    upload: P('/imagery/import-imagery-in-fieldagent-web'),
+    qt: P('/imagery/quicktiles-and-mosaics'),
+    report: P('/export-and-share/create-a-report'),
+    rx: P('/export-and-share/zone-rx-prescriptions'),
+    download: P('/export-and-share/download-and-export-data'),
+    elev: P('/analytics/elevation-mosaic'),
+    qtm: P('/imagery/quicktiles-and-mosaics'),
+    edit: P('/fields/edit-or-delete-a-field'),
+    seasons: P('/fields/crop-seasons-and-field-activities'),
+    share: P('/fields/share-a-field'),
+    analytics: P('/ordering/order-analytics'),
+    create: P('/fields/create-a-field'),
+    standcount: P('/analytics/stand-count'),
+    tassel: P('/analytics/tassel-count'),
+    orders: P('/ordering/orders-and-flight-tasks'),
+    hydrology: P('/analytics/elevation-and-hydrology'),
+    orgs: P('/account-and-organizations/organizations-and-shared-fields'),
   };
+  window.FA_DOCS = { site: SITE, space: SPACE, url: path => SITE + path };
   const back = { text: 'Click the <b>back arrow</b> at the top of the panel to return to the field view.', target: '[data-act="back"]', event: 'view_changed', match: d => d.view === 'field' };
   const openAdd = { text: 'Open <b>Add Map Layers</b>: click the layers icon in the <b>Map Layers</b> card.', target: '[data-act="add"]', event: 'add_layers_opened' };
   const ndvi = { kind: 'drone', survey: MS, product: 'ms', viz: 'ndvi' };
@@ -251,7 +260,7 @@ window.FA_SCENARIOS = (function () {
       { text: 'Enter the recipient’s <b>email address</b>. They do not need to be in your organization.', target: 'input[data-act="x-email"]', event: 'share_email_changed', match: d => d.valid, demo: { text: 'agronomist@example.com' } },
       { text: 'Click <b>SHARE</b>.', target: '[data-act="x-share"]', event: 'share_attempt', note: 'No email is sent from this demo.' },
     ],
-    finish: { text: 'A FieldAgent user finds shared fields under “Fields Shared With Me” in the organization list; anyone else opens the field from the link in the email. Shares made from FieldAgent Web last 365 days and are revoked from FieldAgent Desktop.', links: [{ label: 'Share a field', path: PAGE.share }, { label: 'Organizations and Fields Shared With Me', path: '/fieldagent/account/organizations-and-shared-fields' }] },
+    finish: { text: 'A FieldAgent user finds shared fields under “Fields Shared With Me” in the organization list; anyone else opens the field from the link in the email. Shares made from FieldAgent Web last 365 days and are revoked from FieldAgent Desktop.', links: [{ label: 'Share a field', path: PAGE.share }, { label: 'Organizations and Fields Shared With Me', path: PAGE.orgs }] },
   };
 
   S['order-analytics'] = {

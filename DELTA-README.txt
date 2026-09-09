@@ -1,0 +1,1 @@
+Update 8 delta: only the files that changed since the previous update package. Copy the contents of fieldagent-demos/ over your fieldagent-demo repo (and fa-demos-integration/ over the integration folder), replacing files. If you skipped a package, use the full fieldagent-demos-update-8.zip instead.

@@ -94,7 +94,7 @@
   <span class="title" id="demo-title"></span>
   <span class="sep"></span>
   <label class="hide-sm demo-pick">Demo <select id="demo-pick" aria-label="Choose a demo"></select></label>
-  <a id="demo-docs" href="https://support.senterasensors.com/fieldagent" target="_blank" rel="noopener">Back to the guide</a>
+  <a id="demo-docs" href="https://support.senterasensors.com/fieldagent-documentation-updates" target="_blank" rel="noopener">Back to the guide</a>
 </header>
 <div id="fa-root" class="fa-app"><div class="demo-fallback">Loading the demo…</div></div>
 <script src="data/fa-data.js"></script>
@@ -109,7 +109,9 @@
   // ?mode=page|embed wins; a host page may preset window.FA_MODE; otherwise a framed page is an embed
   const mode = q.get('mode') || window.FA_MODE || (framed ? 'embed' : 'page');
   const gitbookFrame = framed && mode !== 'page';
-  const DOCS = 'https://support.senterasensors.com';
+  // the support site and the path of the FieldAgent space on it come from scenarios.js (window.FA_DOCS)
+  const DOCS = (window.FA_DOCS && window.FA_DOCS.site) || 'https://support.senterasensors.com';
+  const SPACE = (window.FA_DOCS && window.FA_DOCS.space) || '/fieldagent-documentation-updates';
   const scenarios = window.FA_SCENARIOS || {};
   let id = q.get('s') || q.get('scenario') || 'field-view'; if (!scenarios[id]) id = 'field-view';
   document.body.classList.toggle('page', mode === 'page');
@@ -125,7 +127,7 @@
     const sc = scenarios[scenarioId]; const seq = ++bootSeq;
     document.title = `${sc.title} · FieldAgent demo`;
     const t = document.getElementById('demo-title'); if (t) t.textContent = sc.title;
-    const d = document.getElementById('demo-docs'); if (d) d.href = DOCS + (sc.page || '/fieldagent');
+    const d = document.getElementById('demo-docs'); if (d) d.href = DOCS + (sc.page || SPACE);
     if (tour) { tour.destroy(); tour = null; }
     if (!app) {
       app = FieldAgentDemo.mount(root, window.FA_DATA, {
