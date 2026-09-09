@@ -64,7 +64,7 @@
     if (tour) { tour.destroy(); tour = null; }
     if (!app) {
       app = FieldAgentDemo.mount(root, window.FA_DATA, {
-        fullViewport: false, seedLayers: sc.seedLayers !== false, tips: false, leadCapture: false,
+        fullViewport: false, seedLayers: sc.seedLayers !== false, tips: false, leadCapture: false, startField: sc.field,
         blockedMessage: what => `${what} is not part of this demo. In FieldAgent it works from your own account.`,
         downloadMessage: 'Downloads work in your FieldAgent account. This demo is view-only.',
         uploadMessage: 'Uploads happen in your FieldAgent account. This demo is view-only.',

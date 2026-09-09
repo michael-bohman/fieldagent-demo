@@ -20,7 +20,7 @@ Without `mode`, a framed page behaves as `embed` and a top-level page as `page`.
 
 Demo ids: `field-view`, `find-a-field`, `map-layers`, `colorization`, `compare-dates`, `zones`, `satellite`,
 `photo-dots`, `order-mosaic`, `import-imagery`, `report`, `download-data`, `elevation`, `quicktile`, `edit-field`,
-`crop-season`, `share-field`, `order-analytics`.
+`crop-season`, `share-field`, `order-analytics`, `stand-count`.
 
 ## Files
 

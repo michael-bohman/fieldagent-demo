@@ -59,6 +59,10 @@ const VIZ = {
   b1: { id: 'b1', label: 'Band 1', band: 1, index: true, range: null }, b2: { id: 'b2', label: 'Band 2', band: 2, index: true, range: null },
   b3: { id: 'b3', label: 'Band 3', band: 3, index: true, range: null }, b4: { id: 'b4', label: 'Band 4', band: 4, index: true, range: null },
   b5: { id: 'b5', label: 'Band 5', band: 5, index: true, range: null },
+  // analytics products: value ranges come from the survey (`ranges`) or from the sample values themselves
+  stand:   { id: 'stand', label: 'Stand Count', short: 'Stand Count', index: true, range: null, dec: 0, bins: 5, mode: 'area' },
+  emerg:   { id: 'emerg', label: 'Emergence', short: 'Emergence', index: true, range: null, dec: 1, bins: 5, mode: 'area', unit: '%' },
+  tassel:  { id: 'tassel', label: 'Tassel Count', short: 'Tassel Count', index: true, range: null, dec: 0, bins: 5, mode: 'area' },
 };
 const INDEX_ORDER = ['ndvi', 'ndre', 'gndvi', 'cire', 'cig', 'ndwi', 'gli'];
 // A single-band view is coloured white-to-<its own colour> — blue, olive, red, terracotta, brick — and that scale heads the
@@ -128,6 +132,7 @@ function mount(root, DATA, opts = {}) {
   const FIELDS = DATA.fields.map(f => ({ ...f, rect: rectOfExtent(f.extent), ring: ringToWorld(f.boundary), centerW: [merc.x(f.center[0]), merc.y(f.center[1])],
     zones: (f.zones || []).map(z => ({ ...z, rings: z.rings.map(ringToWorld) })),
     surveys: f.surveys.map((s, si) => { const ph = s.photos || {}; return { ...s, dotColor: s.dotColor || DOT_COLORS[si % DOT_COLORS.length], quicktiles: s.quicktiles || [],
+      analytics: (s.analytics || []).map(a => ({ ...a, points: (a.points || []).map(p => ({ ...p, w: [merc.x(p.lon), merc.y(p.lat)] })) })),
       photos: { ...ph, positions: (ph.positions || []).map(([lon, lat]) => [merc.x(lon), merc.y(lat)]), samples: (ph.samples || []).filter(sm => sm.lon != null && sm.lat != null).map(sm => ({ ...sm, w: [merc.x(sm.lon), merc.y(sm.lat)] })) } }; }) }));
   const FIELD = Object.fromEntries(FIELDS.map(f => [f.id, f]));
   const BASEMAPS = (DATA.basemaps || []).filter(b => hasImg(b.key)).map(b => ({ ...b, rect: rectOfBounds(b.bounds) }))
@@ -153,7 +158,8 @@ function mount(root, DATA, opts = {}) {
     order: { survey: null, picks: {}, aligned: {} },
     upload: { type: 'photos', alt: 400, horizon: false, kind: 'RGB' },
     report: { paper: 'Letter', title: 'Field Report', editTitle: false, summary: '', editSummary: false, imgTitle: '', editImg: false, note: '', editNote: false, showLogo: false, showContact: false, legend: true, zoneStats: true, secOpen: { logo: true, contact: true, map: true } },
-    photo: null,              // { uid, idx, band, meta: bool, sub: {...}, zoom }
+    photo: null,              // { uid, idx, band, meta: bool, sub: {...}, zoom, kind?: 'sample' }
+    excluded: {},             // sample points excluded in the sample viewer: `${fid}|${survey}|${product}|${i}` → true
     lead: null, leads: [],    // the "send this dataset to my inbox" form (every download button opens it) and what it collected
     tipsDone: new Set(Array.isArray(store.tips) ? store.tips : []),
     collapsed: false, sheetH: null,
@@ -166,9 +172,10 @@ function mount(root, DATA, opts = {}) {
 
   function surveyOf(L) { return FIELD[L.fid].surveys.find(s => s.key === L.survey); }
   function satItemOf(L) { return SAT.items.find(i => satCode(i.date) === L.date); }
-  function imgKey(L, viz) { const v = viz || L.viz; if (L.kind === 'sat') return `${L.fid}_sat${L.date}_${v}`; if (L.kind === 'photos') return null; return `${L.fid}_${L.survey}_${L.product.startsWith('qt_') ? L.product : v}`; }
+  function imgKey(L, viz) { const v = viz || L.viz; if (L.kind === 'sat') return `${L.fid}_sat${L.date}_${v}`; if (L.kind === 'photos' || L.kind === 'samples') return null; if (analyticOf(L)) return `${L.fid}_${L.survey}_${L.product}`; return `${L.fid}_${L.survey}_${L.product.startsWith('qt_') ? L.product : v}`; }
   function maskId(L) { return L.kind === 'sat' ? `${L.fid}_boundary` : L.product.startsWith('qt_') ? `${L.fid}_${L.survey}_${L.product}_mask` : `${L.fid}_${L.survey}_mask`; }
-  function vizRange(L) { const v = VIZ[L.viz]; if (v.id === 'elev') return surveyOf(L).elevRange || [0, 1]; if (v.range) return v.range; const r = (surveyOf(L).ranges || {})[v.id]; return r || [0, 1]; }
+  function vizRange(L) { const v = VIZ[L.viz]; if (v.id === 'elev') return surveyOf(L).elevRange || [0, 1]; if (v.range) return v.range;
+    if (isSamples(L)) { const vals = samplePoints(L).map(p => sampleValue(L, p)); if (vals.length) return [Math.min(...vals), Math.max(...vals)]; } const r = (surveyOf(L).ranges || {})[v.id]; return r || [0, 1]; }
   // decimals: fixed per index; single bands print reflectance (0–1) with three, digital numbers (0–4000) with none
   function decOf(L) { const v = VIZ[L.viz]; return v.dec != null ? v.dec : 2; }
   function bandNames(L) { const s = surveyOf(L); return s && DATA.bands[s.bands] ? DATA.bands[s.bands].order : []; }
@@ -181,6 +188,7 @@ function mount(root, DATA, opts = {}) {
   const MS_VIZ = ['cir', 'natural', ...INDEX_ORDER, 'b1', 'b2', 'b3', 'b4', 'b5'];
   function productVizOptions(L) {
     if (L.kind === 'sat') return [L.product];
+    const an = analyticOf(L); if (an) return [an.viz];
     if (L.product === 'ms') return MS_VIZ.filter(v => hasImg(imgKey(L, v)));
     if (L.product === 'qt_ndre') return ['ndre'];   // the NDRE QuickTile is an index raster (−1…1) and colourizes like the mosaic
     if (L.product.startsWith('qt_')) return ['qt'];
@@ -189,6 +197,7 @@ function mount(root, DATA, opts = {}) {
   function newLayer(fid, spec) {
     const L = { uid: uidSeq++, fid, opacity: 1, clipped: true, visible: true, ...spec };
     if (L.kind === 'photos') { L.viz = 'photos'; L.col = null; return L; }
+    if (L.kind === 'samples') { const an = analyticOf(L) || {}; const p0 = (an.props || [])[0]; L.prop = p0 ? p0.id : 'density'; L.viz = p0 ? p0.viz : (an.viz || 'stand'); L.col = defaultCol(L); return L; }
     if (!L.viz) { const o = productVizOptions(L); L.viz = o[0] || 'rgb'; }
     L.col = VIZ[L.viz] && VIZ[L.viz].index ? defaultCol(L) : null;
     return L;
@@ -198,16 +207,39 @@ function mount(root, DATA, opts = {}) {
   function layerTitle(L) {
     if (L.kind === 'sat') return `Satellite ${VIZ[L.viz].short || VIZ[L.viz].label}`;
     if (L.kind === 'photos') return 'Photo Dots';
+    const an = analyticOf(L); if (an) return an.name;
     if (L.product.startsWith('qt_')) { const q = qtOf(L); return q ? q.name : 'QuickTile'; }
     const name = PRODUCT_NAME[L.product] || L.product;
     return L.product === 'ms' && L.viz !== 'cir' ? `${name} · ${vizLabel(L)}` : name;
   }
   function layerSub(L) {
     if (L.kind === 'sat') { const it = satItemOf(L); return `Sentinel-2 • ${it.date} • ${it.clear}% clear`; }
-    const s = surveyOf(L); return `${s.name} • ${s.date}`;
+    const s = surveyOf(L); return s.name ? `${s.name} • ${s.date}` : s.date;
   }
   const isPhotos = L => L.kind === 'photos';
   const photoSamples = L => (surveyOf(L).photos.samples || []);
+  // ----- analytics (stand count & co.) -----
+  const analyticOf = L => (L && L.survey && L.kind !== 'sat' && L.kind !== 'photos') ? ((surveyOf(L) || {}).analytics || []).find(a => a.id === L.product) || null : null;
+  const isSamples = L => L.kind === 'samples';
+  const samplePoints = L => { const a = analyticOf(L); return a ? (a.points || []) : []; };
+  const sampleProp = L => { const a = analyticOf(L); const props = (a && a.props) || []; return props.find(p => p.id === L.prop) || props[0] || { id: 'density', label: 'Value', viz: L.viz }; };
+  const sampleValue = (L, pt) => pt[sampleProp(L).id];
+  const exKey = (L, pt) => `${L.fid}|${L.survey}|${L.product}|${pt.i}`;
+  const isExcluded = (L, pt) => !!state.excluded[exKey(L, pt)];
+  const shownPoints = L => samplePoints(L).filter(pt => !(L.hideExcluded && isExcluded(L, pt)));
+  const SHIST = {};
+  function sampleHist(L) {
+    const pts = shownPoints(L); const sig = `${L.fid}|${L.survey}|${L.product}|${L.prop}|${pts.map(p => p.i).join(',')}`;
+    if (SHIST[sig]) return SHIST[sig];
+    const counts = new Uint32Array(256); let total = 0, sum = 0;
+    for (const pt of pts) { const g = clamp(Math.round(v2g(L, sampleValue(L, pt))), 0, 255); counts[g]++; total++; sum += g; }
+    return SHIST[sig] = { counts, total, sum };
+  }
+  const pointInRings = (w, rings) => { let inside = false; for (const ring of rings) { for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if (((yi > w[1]) !== (yj > w[1])) && (w[0] < (xj - xi) * (w[1] - yi) / (yj - yi) + xi)) inside = !inside; } } return inside; };
+  function sampleZoneStats(L) {
+    const f = FIELD[L.fid]; const pts = shownPoints(L); const agg = list => { const v = list.map(p => sampleValue(L, p)); return v.length ? { min: Math.min(...v), avg: v.reduce((a, b) => a + b, 0) / v.length, max: Math.max(...v), n: v.length } : { min: null, avg: null, max: null, n: 0 }; };
+    return [{ name: 'Field Boundary', acres: f.acres, boundary: true, ...agg(pts) }, ...f.zones.map((z, zi) => ({ name: zoneName(f.id, zi), acres: z.acres, ...agg(pts.filter(p => pointInRings(p.w, z.rings))) }))];
+  }
 
   // ---------- imagery (decoded lazily) ----------
   const IMG = {}, LOADING = {}, COMPOSITE = {}, IDX = {}, MASK = {}, MASK_CANVAS = {}, RASTER = {}, HIST = {};
@@ -258,7 +290,7 @@ function mount(root, DATA, opts = {}) {
     x.putImageData(id, 0, 0); return MASK_CANVAS[k] = c;
   }
   async function prepareLayer(L) {
-    if (isPhotos(L)) return true;
+    if (isPhotos(L) || isSamples(L)) return true;
     const key = imgKey(L); if (!hasImg(key)) return false;
     const im = await loadImage(key); const w = im.naturalWidth, h = im.naturalHeight;
     const m = await getMask(L, w, h); const mk = `${maskId(L)}|${w}|${h}`;
@@ -277,12 +309,12 @@ function mount(root, DATA, opts = {}) {
   }
   const PREPARING = new Set();
   function ensure(L) {
-    if (isPhotos(L)) return; if (!hasImg(imgKey(L))) return; const key = imgKey(L) + '|' + L.viz; if (PREPARING.has(key)) return; PREPARING.add(key);
+    if (isPhotos(L) || isSamples(L)) return; if (!hasImg(imgKey(L))) return; const key = imgKey(L) + '|' + L.viz; if (PREPARING.has(key)) return; PREPARING.add(key);
     prepareLayer(L).then(ok => { PREPARING.delete(key); if (ok) { dirty = true; if (state.view === 'layer' && state.detailUid === L.uid) render(true); } })
       .catch(err => { PREPARING.delete(key); console.error(err); toast('This layer could not be decoded in your browser.'); });
   }
-  function ready(L) { if (isPhotos(L)) return true; const key = imgKey(L); if (!hasImg(key)) return false; const im = IMG[key]; if (!im) return false; const mk = `${maskId(L)}|${im.naturalWidth}|${im.naturalHeight}`; return VIZ[L.viz] && VIZ[L.viz].index ? !!(IDX[key] && HIST[`${key}|${mk}`]) : !!COMPOSITE[key]; }
-  function histOf(L) { const key = imgKey(L), im = IMG[key]; if (!im) return null; return HIST[`${key}|${maskId(L)}|${im.naturalWidth}|${im.naturalHeight}`] || null; }
+  function ready(L) { if (isPhotos(L) || isSamples(L)) return true; const key = imgKey(L); if (!hasImg(key)) return false; const im = IMG[key]; if (!im) return false; const mk = `${maskId(L)}|${im.naturalWidth}|${im.naturalHeight}`; return VIZ[L.viz] && VIZ[L.viz].index ? !!(IDX[key] && HIST[`${key}|${mk}`]) : !!COMPOSITE[key]; }
+  function histOf(L) { if (isSamples(L)) return sampleHist(L); const key = imgKey(L), im = IMG[key]; if (!im) return null; return HIST[`${key}|${maskId(L)}|${im.naturalWidth}|${im.naturalHeight}`] || null; }
 
   // ---------- colorization ----------
   function g2v(L, g) { const [lo, hi] = vizRange(L); return lo + g / 255 * (hi - lo); }
@@ -322,6 +354,10 @@ function mount(root, DATA, opts = {}) {
     COLOR_CACHE.set(sig, cv); return cv;
   }
   function layerStats(L) {
+    if (isSamples(L)) { const pts = shownPoints(L); const vals = pts.map(p => sampleValue(L, p)); const h = sampleHist(L); const { edges } = buildLUT(L, h); const { min, max } = L.col; const rows = [];
+      for (let i = 0; i < edges.length - 1; i++) rows.push({ lo: edges[i], hi: edges[i + 1], count: 0 });
+      for (const v of vals) { if (v < min || v > max) continue; let i = 0; while (i < rows.length - 1 && v >= edges[i + 1]) i++; rows[i].count++; }
+      return { rows, acres: FIELD[L.fid].acres, avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0, app: 0, count: vals.length, samples: true }; }
     const h = histOf(L); if (!h) return null; const key = imgKey(L); const { edges } = buildLUT(L, h); const { min, max } = L.col; const rows = [];
     for (let i = 0; i < edges.length - 1; i++) rows.push({ lo: edges[i], hi: edges[i + 1], count: 0 });
     for (let g = 0; g < 256; g++) { const v = g2v(L, g), n = h.counts[g]; if (!n || v < min || v > max) continue; let i = 0; while (i < rows.length - 1 && v >= edges[i + 1]) i++; rows[i].count += n; }
@@ -336,7 +372,7 @@ function mount(root, DATA, opts = {}) {
     return indexes.map(zi => { const z = f.zones[zi]; const k = `${key}|${maskId(L)}|${zi}`; if (ZSTAT[k] === undefined) { const zr = zoneRaster(f.id, zi, idx.w, idx.h); let n = 0, s = 0; for (let i = 0; i < zr.length; i++) if (zr[i] && m[i]) { n++; s += idx.gray[i]; } ZSTAT[k] = n ? s / n : null; }
       return { name: zoneName(f.id, zi), acres: z.acres, avg: ZSTAT[k] == null ? null : g2v(L, ZSTAT[k]) }; });
   }
-  const fmtV = (L, v) => v == null ? '—' : Math.abs(v) >= 1000 ? (v / 1000).toFixed(2) + 'k' : v.toFixed(decOf(L));   // 0.38 · 7.55 · 1.96k, as FieldAgent prints them
+  const fmtV = (L, v) => v == null ? '—' : Math.abs(v) >= 100000 ? Math.round(v / 1000) + 'k' : Math.abs(v) >= 1000 ? (v / 1000).toPrecision(3) + 'k' : v.toFixed(decOf(L));   // 0.38 · 7.55 · 1.96k, as FieldAgent prints them
 
   // ---------- DOM skeleton ----------
   root.classList.add('fa-app'); if (isTouch) root.classList.add('touch');
@@ -397,7 +433,7 @@ function mount(root, DATA, opts = {}) {
   }
   function fitView(rect, pad = 48, W = cssW, H = cssH, box = visibleBox()) {
     const w = rect.x1 - rect.x0, h = rect.y1 - rect.y0;
-    const z = clamp(Math.log2(Math.min((box.w - pad * 2) / w, (box.h - pad * 2) / h) / 512), 11, 19.5);
+    const z = clamp(Math.log2(Math.min((box.w - pad * 2) / w, (box.h - pad * 2) / h) / 512), 8, 19.5);
     const s = 512 * Math.pow(2, z); const cx = (rect.x0 + rect.x1) / 2, cy = (rect.y0 + rect.y1) / 2;
     return { cx: cx - (box.x + box.w / 2 - W / 2) / s, cy: cy - (box.y + box.h / 2 - H / 2) / s, z };
   }
@@ -416,12 +452,14 @@ function mount(root, DATA, opts = {}) {
     const P = proj(v, W, H); const rectOf = wr => { const [x0, y0] = P.toScreen(wr.x0, wr.y0), [x1, y1] = P.toScreen(wr.x1, wr.y1); return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }; };
     const pathOf = rings => { const p = new Path2D(); rings.forEach(ring => { ring.forEach(([wx, wy], i) => { const [x, y] = P.toScreen(wx, wy); i ? p.lineTo(x, y) : p.moveTo(x, y); }); p.closePath(); }); return p; };
     cx2.fillStyle = '#04070e'; cx2.fillRect(0, 0, W, H); cx2.imageSmoothingEnabled = true; cx2.imageSmoothingQuality = 'high';
-    for (const b of BASEMAPS) { const im = IMG[b.key]; if (!im) continue; const r = rectOf(b.rect); if (r.x > W || r.y > H || r.x + r.w < 0 || r.y + r.h < 0) continue; cx2.drawImage(im, r.x, r.y, r.w, r.h); }
+    for (const b of BASEMAPS) { const r = rectOf(b.rect); if (r.x > W || r.y > H || r.x + r.w < 0 || r.y + r.h < 0) continue; const im = IMG[b.key];
+      if (!im) { if (!o.snapshot && !LOADING[b.key]) loadImage(b.key).then(() => { dirty = true; }).catch(() => {}); continue; }
+      cx2.drawImage(im, r.x, r.y, r.w, r.h); }
     const f = curField(); const fieldMode = state.view !== 'fields';
     if (fieldMode) {
       const r = rectOf(f.rect); const bp = pathOf([f.ring]); const Ls = layers();
       for (let i = Ls.length - 1; i >= 0; i--) {
-        const L = Ls[i]; if (!L.visible || L.opacity <= 0 || isPhotos(L)) continue;
+        const L = Ls[i]; if (!L.visible || L.opacity <= 0 || isPhotos(L) || isSamples(L)) continue;
         if (!ready(L)) { if (!o.snapshot) ensure(L); continue; }
         const src = VIZ[L.viz] && VIZ[L.viz].index ? colorizedCanvas(L) : COMPOSITE[imgKey(L)]; if (!src) continue;
         cx2.save(); cx2.globalAlpha = L.opacity; if (L.clipped || L.kind === 'sat') cx2.clip(bp); cx2.drawImage(src, r.x, r.y, r.w, r.h); cx2.restore();
@@ -440,14 +478,29 @@ function mount(root, DATA, opts = {}) {
         if (state.photo && state.photo.uid === L.uid) { const smp = photoSamples(L)[state.photo.idx]; if (smp) { const [x, y] = P.toScreen(smp.w[0], smp.w[1]); cx2.fillStyle = 'rgba(0,208,255,.45)'; cx2.beginPath(); cx2.arc(x, y, rad + 9, 0, Math.PI * 2); cx2.fill(); } }
         cx2.restore();
       }
+      // analytics sample points: FieldAgent draws each sample as a ~40 px bubble in its class colour with the value inside
+      for (let i = Ls.length - 1; i >= 0; i--) {
+        const L = Ls[i]; if (!isSamples(L) || !L.visible) continue; const { lut } = buildLUT(L, histOf(L));
+        const R = bubbleRadius(v.z) * (o.snapshot ? 0.85 : 1);
+        cx2.save(); cx2.globalAlpha = L.opacity; cx2.font = `700 ${Math.max(9, Math.round(R * 0.6))}px Roboto, "Helvetica Neue", Arial, sans-serif`; cx2.textAlign = 'center'; cx2.textBaseline = 'middle';
+        for (const pt of shownPoints(L)) {
+          const [x, y] = P.toScreen(pt.w[0], pt.w[1]); if (x < -R || y < -R || x > W + R || y > H + R) continue;
+          const val = sampleValue(L, pt); const packed = lut[clamp(Math.round(v2g(L, val)), 0, 255)]; const col = packed ? unpackCss(packed) : '#7a7a7a'; const ex = isExcluded(L, pt);
+          cx2.beginPath(); cx2.arc(x, y, R, 0, Math.PI * 2); cx2.fillStyle = ex ? '#6b6b6b' : col; cx2.fill(); cx2.lineWidth = Math.max(1.5, R * 0.15); cx2.strokeStyle = 'rgba(0,0,0,.3)'; cx2.stroke();
+          if (R >= 11) { cx2.fillStyle = '#262626'; cx2.fillText(fmtV(L, val), x, y + 0.5); }
+          if (state.photo && state.photo.kind === 'sample' && state.photo.uid === L.uid && samplePoints(L)[state.photo.idx] === pt) { cx2.lineWidth = 3; cx2.strokeStyle = '#fff'; cx2.beginPath(); cx2.arc(x, y, R + 4, 0, Math.PI * 2); cx2.stroke(); }
+        }
+        cx2.restore();
+      }
     } else { for (const g of FIELDS) { const bp = pathOf([g.ring]); cx2.lineWidth = 2; cx2.strokeStyle = 'rgba(0,208,255,.7)'; cx2.stroke(bp); } }
   }
+  const bubbleRadius = z => z >= 15.2 ? 20 : z >= 13 ? 20 * (0.35 + 0.65 * (z - 13) / 2.2) : 7;
   function draw() { dirty = false; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); drawScene(ctx, view, cssW, cssH); drawMeasure(); updateScaleBar(); updatePins(); }
   function frame(now) { stepAnim(now); if (dirty) draw(); requestAnimationFrame(frame); }
   function updateScaleBar() {
-    const mpp = EARTH * Math.cos(merc.lat(view.cy) * Math.PI / 180) / scalePx(); const ftPerPx = mpp * 3.28084; const nice = [20, 50, 100, 200, 300, 500, 1000, 2000, 3000, 5000, 10000];
+    const mpp = EARTH * Math.cos(merc.lat(view.cy) * Math.PI / 180) / scalePx(); const ftPerPx = mpp * 3.28084; const nice = [20, 50, 100, 200, 300, 500, 1000, 2000, 3000, 5000, 10000, 26400, 52800, 105600, 264000];
     let ft = nice[0]; for (const n of nice) if (n / ftPerPx <= 100) ft = n;
-    const el = $('scalebar'); el.style.width = Math.round(ft / ftPerPx) + 'px'; el.textContent = ft >= 5280 ? (ft / 5280).toFixed(1) + ' mi' : ft + ' ft';
+    const el = $('scalebar'); el.style.width = Math.round(ft / ftPerPx) + 'px'; el.textContent = ft >= 5280 ? (ft / 5280).toFixed(ft % 5280 ? 1 : 0) + ' mi' : ft.toLocaleString() + ' ft';
   }
   function updatePins() {
     if (state.view !== 'fields') { if (pinsEl.childElementCount) pinsEl.innerHTML = ''; return; }
@@ -466,7 +519,7 @@ function mount(root, DATA, opts = {}) {
   canvas.addEventListener('pointerup', endPointer); canvas.addEventListener('pointercancel', endPointer);
   canvas.addEventListener('wheel', e => { e.preventDefault(); anim = null; const r = canvas.getBoundingClientRect(); setZoom(view.z - e.deltaY * (e.deltaMode ? 0.05 : 0.0025), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
   canvas.addEventListener('dblclick', e => { const r = canvas.getBoundingClientRect(); setZoom(view.z + 1, e.clientX - r.left, e.clientY - r.top); });
-  function setZoom(z, sx, sy) { z = clamp(z, 11, 19.5); const [wx, wy] = toWorld(sx, sy); view.z = z; const [nx, ny] = toWorld(sx, sy); view.cx += wx - nx; view.cy += wy - ny; dirty = true; }
+  function setZoom(z, sx, sy) { z = clamp(z, 8, 19.5); const [wx, wy] = toWorld(sx, sy); view.z = z; const [nx, ny] = toWorld(sx, sy); view.cx += wx - nx; view.cy += wy - ny; dirty = true; }
   if (window.ResizeObserver) new ResizeObserver(() => resize()).observe(mapEl); else window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(() => { resize(); if (state.view !== 'fields') jumpTo(fitField()); }, 300));
 
@@ -477,11 +530,15 @@ function mount(root, DATA, opts = {}) {
     if (measuring) { const [wx, wy] = toWorld(sx, sy); if (measurePts.length >= 2) measurePts = []; measurePts.push([wx, wy]);
       if (measurePts.length === 2) { const [a, b] = measurePts; const lat = merc.lat((a[1] + b[1]) / 2); const m = Math.hypot(b[0] - a[0], b[1] - a[1]) * EARTH * Math.cos(lat * Math.PI / 180); $('measure').textContent = `${(m * 3.28084).toFixed(0)} ft  ·  ${m.toFixed(0)} m`; } else $('measure').textContent = 'Now the second point.'; dirty = true; return; }
     if (state.view === 'fields') { const P = proj(view, cssW, cssH); for (const f of FIELDS) { const p = new Path2D(); f.ring.forEach(([wx, wy], i) => { const [x, y] = P.toScreen(wx, wy); i ? p.lineTo(x, y) : p.moveTo(x, y); }); p.closePath(); if (ctx.isPointInPath(p, sx * dpr, sy * dpr)) { openField(f.id); return; } } return; }
+    // analytics samples: the nearest bubble under the pointer opens the sample viewer
+    for (const L of layers()) { if (!isSamples(L) || !L.visible) continue; const pts = samplePoints(L); const R = bubbleRadius(view.z) + 2; let bi = -1, bd = 1e9;
+      pts.forEach((pt, idx) => { if (L.hideExcluded && isExcluded(L, pt)) return; const [x, y] = toScreen(pt.w[0], pt.w[1]); const d = Math.hypot(x - sx, y - sy); if (d < R && d < bd) { bd = d; bi = idx; } });
+      if (bi >= 0) { openSample(L.uid, bi); return; } }
     // photo dots: the nearest sampled dot within reach opens the viewer
     let best = null;
     for (const L of layers()) { if (!isPhotos(L) || !L.visible) continue; photoSamples(L).forEach((smp, idx) => { const [x, y] = toScreen(smp.w[0], smp.w[1]); const d = Math.hypot(x - sx, y - sy); if (d < 14 && (!best || d < best.d)) best = { d, L, idx }; }); }
     if (best) { openPhoto(best.L.uid, best.idx); return; }
-    for (const L of layers()) { if (!isPhotos(L) || !L.visible) continue; const pos = surveyOf(L).photos.positions || []; for (const p of pos) { const [x, y] = toScreen(p[0], p[1]); if (Math.hypot(x - sx, y - sy) < 10) { toast(`This sample carries ${photoSamples(L).length} of the ${(surveyOf(L).photos.count || pos.length).toLocaleString()} photos in this flight — the dots with a bright ring open.`); return; } } }
+    for (const L of layers()) { if (!isPhotos(L) || !L.visible) continue; const pos = surveyOf(L).photos.positions || []; for (const p of pos) { const [x, y] = toScreen(p[0], p[1]); if (Math.hypot(x - sx, y - sy) < 10) { toast(photoSamples(L).length ? `This sample carries ${photoSamples(L).length} of the ${(surveyOf(L).photos.count || pos.length).toLocaleString()} photos in this flight — the dots with a bright ring open.` : 'The original photos of this flight are not part of this demo.'); return; } } }
   }
   function drawMeasure() { if (!measuring || !measurePts.length) return; ctx.save(); ctx.strokeStyle = '#fff'; ctx.fillStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
     const pts = measurePts.map(p => toScreen(p[0], p[1])); ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke(); ctx.setLineDash([]); pts.forEach(p => { ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, Math.PI * 2); ctx.fill(); }); ctx.restore(); }
@@ -500,6 +557,7 @@ function mount(root, DATA, opts = {}) {
     if (hasImg(`${fid}_${s.key}_elev`)) mk({ kind: 'drone', survey: s.key, product: 'elev' }, false);
     const qt = (s.quicktiles || []).find(q => hasImg(`${fid}_${s.key}_${q.id}`)); if (qt) mk({ kind: 'drone', survey: s.key, product: qt.id }, false);
     const sat = SAT.items.slice().sort((a, b) => satCode(b.date).localeCompare(satCode(a.date))).find(it => hasImg(`${fid}_sat${satCode(it.date)}_ndvi`)); if (sat) mk({ kind: 'sat', date: satCode(sat.date), product: 'ndvi', viz: 'ndvi' }, false);
+    for (const sv of f.surveys) for (const a of (sv.analytics || [])) { const avail = a.kind === 'raster' ? hasImg(`${fid}_${sv.key}_${a.id}`) : !!(a.points && a.points.length); if (avail) mk({ kind: a.kind === 'samples' ? 'samples' : 'drone', survey: sv.key, product: a.id }, a.kind === 'raster'); }
     return out;
   }
   function openField(fid, animate = true) {
@@ -590,13 +648,16 @@ function mount(root, DATA, opts = {}) {
     const mk = (id, name, sub) => { const key = `${f.id}_${s.key}_${id === 'ms' ? (hasImg(`${f.id}_${s.key}_cir`) ? 'cir' : 'ndvi') : id}`; return { id, name, sub, key, avail: hasImg(key) }; };
     const list = s.bands === 'rgb' ? [mk('vari', 'VARI Mosaic'), mk('elev', 'Elevation Mosaic'), mk('rgb', 'RGB Mosaic')] : [mk('ms', 'Multispectral Mosaic', s.bands === 'd4k' ? '5 bands' : '4 bands'), mk('elev', 'Elevation Mosaic'), mk('rgb', 'RGB Mosaic')];
     (s.quicktiles || []).forEach(q => list.push({ id: q.id, name: q.name, key: `${f.id}_${s.key}_${q.id}`, avail: hasImg(`${f.id}_${s.key}_${q.id}`), qt: true }));
+    if ((s.analytics || []).length) { const kept = list.filter(p => p.avail);   // an analytics flight lists only what was produced for it
+      s.analytics.forEach(a => kept.push({ id: a.id, name: a.name, key: a.kind === 'raster' ? `${f.id}_${s.key}_${a.id}` : null, avail: a.kind === 'raster' ? hasImg(`${f.id}_${s.key}_${a.id}`) : !!(a.points && a.points.length), analytic: a.kind, kind: a.kind === 'samples' ? 'samples' : 'drone' }));
+      return kept; }
     return list;
   }
   function renderAdd() {
     const f = curField(); const Ls = layers(); const on = (kind, a, b) => Ls.some(L => L.kind === kind && (kind === 'sat' ? L.date === a && L.product === b : kind === 'photos' ? L.survey === a : L.survey === a && L.product === b));
     const surveys = state.sources.surveys ? f.surveys.map(s => { const ph = s.photos || {}; const phAvail = !!(ph.positions && ph.positions.length);
-      return `<section class="card"><div class="group-head">${icon('i-drone', 'ico sm')}<div class="name"><b>${esc(s.name)}</b><span>${esc(s.date)} · ${esc(SENSOR_LABEL[s.bands] || s.bands)}</span></div><button class="iconbtn" type="button" data-blocked="Flight notes" aria-label="Notes">${icon('i-doc', 'ico sm')}</button><button class="iconbtn" type="button" data-blocked="Survey options" aria-label="More">${icon('i-more', 'ico sm')}</button></div>
-      ${surveyProducts(f, s).map(p => p.avail ? `<div class="prod-row" data-act="pick" data-survey="${s.key}" data-product="${p.id}" role="button" tabindex="0" aria-pressed="${on('drone', s.key, p.id)}"><span class="prod-ico">${icon(p.qt ? 'i-grid' : 'i-mosaic', 'ico sm')}</span><div class="prod-name"><b>${esc(p.name)}</b>${p.sub ? `<span>${esc(p.sub)}</span>` : ''}</div><span class="radio${on('drone', s.key, p.id) ? ' on' : ''}"></span></div>`
+      return `<section class="card"><div class="group-head">${icon('i-drone', 'ico sm')}<div class="name"><b>${esc(s.name || s.date)}</b>${s.name ? `<span>${esc(s.date)} · ${esc(SENSOR_LABEL[s.bands] || s.bands)}</span>` : ''}</div><button class="iconbtn" type="button" data-blocked="Flight notes" aria-label="Notes">${icon('i-doc', 'ico sm')}</button><button class="iconbtn" type="button" data-blocked="Survey options" aria-label="More">${icon('i-more', 'ico sm')}</button></div>
+      ${surveyProducts(f, s).map(p => p.avail ? `<div class="prod-row" data-act="pick" data-survey="${s.key}" data-product="${p.id}" data-kind="${p.kind || 'drone'}" role="button" tabindex="0" aria-pressed="${on(p.kind || 'drone', s.key, p.id)}"><span class="prod-ico">${icon(p.analytic === 'raster' ? 'i-heatmap' : p.analytic === 'samples' ? 'i-samples' : p.qt ? 'i-grid' : 'i-mosaic', 'ico sm')}</span><div class="prod-name"><b>${esc(p.name)}</b>${p.sub ? `<span>${esc(p.sub)}</span>` : ''}</div><span class="radio${on(p.kind || 'drone', s.key, p.id) ? ' on' : ''}"></span></div>`
         : `<div class="prod-row off" title="Not included in this sample"><span class="prod-ico">${icon(p.qt ? 'i-grid' : 'i-mosaic', 'ico sm')}</span><div class="prod-name"><b>${esc(p.name)}</b><span class="na">Not in this sample</span></div><span class="radio off"></span></div>`).join('')}
       ${phAvail ? `<div class="prod-row photos" data-act="pickphotos" data-survey="${s.key}" role="button" tabindex="0" aria-pressed="${on('photos', s.key)}"><span class="bar" style="background:${s.dotColor}"></span><span class="prod-ico">${icon('i-camera', 'ico sm')}</span><div class="prod-name"><b>Photo Dots</b><span>${(ph.count || ph.positions.length).toLocaleString()} photos</span></div><span class="radio${on('photos', s.key) ? ' on' : ''}"></span></div>`
         : `<div class="prod-row photos off" title="Photo positions are not included in this sample"><span class="bar" style="background:${s.dotColor}"></span><span class="prod-ico">${icon('i-camera', 'ico sm')}</span><div class="prod-name"><b>Photo Dots</b><span>${(ph.count || 0).toLocaleString()} photos</span><span class="na">Not in this sample</span></div><span class="radio off"></span></div>`}
@@ -626,7 +687,7 @@ function mount(root, DATA, opts = {}) {
   function chipsHtml(L) { const { min, max } = L.col; return `<span class="chip" style="left:${pct(L, min)}%">${fmtV(L, min)}</span><span class="chip" style="left:${pct(L, max)}%">${fmtV(L, max)}</span>`; }
   function binTableHtml(L) {
     if (!state.binTable) return ''; const stats = layerStats(L); if (!stats) return ''; const colors = binColors(L);
-    return `<table class="bin-table">${stats.rows.map((r, i) => `<tr><td><span class="sw" style="background:${rgbCss(colors[i])}"></span>${fmtV(L, r.lo)} – ${fmtV(L, r.hi)}${VIZ[L.viz].unit || ''}</td><td>${fmtAc(r.count * stats.app)} ac</td></tr>`).join('')}</table>`;
+    return `<table class="bin-table">${stats.rows.map((r, i) => `<tr><td><span class="sw" style="background:${rgbCss(colors[i])}"></span>${fmtV(L, r.lo)} – ${fmtV(L, r.hi)}${VIZ[L.viz].unit || ''}</td><td>${stats.samples ? `${r.count} sample${r.count === 1 ? '' : 's'}` : `${fmtAc(r.count * stats.app)} ac`}</td></tr>`).join('')}</table>`;
   }
   function patchColorization(L) {
     const h = $('hist'); if (h) h.outerHTML = histSvg(L);
@@ -689,19 +750,43 @@ function mount(root, DATA, opts = {}) {
         ${n ? `<section class="card"><div class="card-title">Sample photos</div>${photoSamples(L).map((smp, i) => `<div class="prod-row" data-act="openphoto" data-uid="${L.uid}" data-idx="${i}" role="button" tabindex="0"><span class="prod-ico">${icon('i-camera', 'ico sm')}</span><div class="prod-name"><b>${esc(smp.details && smp.details.time ? `${smp.details.date}, ${smp.details.time}` : `Photo ${smp.i}`)}</b><span>${esc(smp.file || `${smp.i} / ${s.photos.count || ''}`)}</span></div>${icon('i-tri', 'ico sm')}</div>`).join('')}</section>` : ''}
         ${opacity}<button class="delete-bar" type="button" disabled>Delete</button></div>`;
     }
+    if (isSamples(L)) return renderSamplesLayer(L);
+    const an = analyticOf(L);
     const s = surveyOf(L); const isQt = L.product.startsWith('qt_'); const tif = (s.tif || {})[L.product === 'ms' ? 'ms' : L.product];
     const vizNote = VIZ[L.viz].formula ? `<div class="tip">${esc(VIZ[L.viz].formula)}</div>` : VIZ[L.viz].band ? `<div class="tip">Single band, stretched to this mosaic's range ${fmtV(L, vizRange(L)[0])}–${fmtV(L, vizRange(L)[1])}${vizRange(L)[1] > 50 ? ' (digital numbers)' : ' reflectance'}</div>` : '';
     const vizSelect = L.product === 'ms' ? `<div class="select${state.menu === 'viz' ? ' open' : ''}"><span class="label">Visualization</span><button class="value" type="button" data-act="menu" data-menu="viz" aria-haspopup="listbox" aria-expanded="${state.menu === 'viz'}"><span>${esc(vizLabel(L))}</span>${icon('i-drop')}</button>${state.menu === 'viz' ? vizMenuHtml(L) : ''}</div>${vizNote}${tip('viz', `One multispectral mosaic, every view: <b>Visualization</b> switches between the composites, the ${INDEX_ORDER.length} vegetation indices and each single band of the ${esc(SENSOR_LABEL[s.bands] || s.bands)} without re-processing anything.`)}` : L.product === 'vari' ? `<div class="tip">${esc(VIZ.vari.formula)} — a crop-health index computed from the RGB camera</div>` : L.product === 'elev' ? `<div class="tip">Digital surface model from the same flight · ${fmtV(L, (s.elevRange || [0, 0])[0])}–${fmtV(L, (s.elevRange || [0, 0])[1])} m</div>${tip('elev', 'The elevation mosaic is a digital surface model: terrain, and crop height on top of it — which is why the plots stand out.')}` : isQt ? `<div class="tip">QuickTiles are generated from the raw photos on import — a quick look at the flight before the stitched mosaics finish.</div>` : '';
     return head(f.name, { back: 'field' }) + `<div class="panel-scroll">
       <section class="card"><div class="card-title">${isQt ? 'QuickTile Details' : 'Mosaic Details'}</div>
-        <div class="kv-block"><div class="k">Name</div><div class="v">${esc(isQt ? layerTitle(L) : PRODUCT_NAME[L.product] || L.product)}</div><div class="k">Survey</div><div class="v">${esc(s.name)} · ${esc(s.date)}</div><div class="k">Sensor</div><div class="v">${esc(SENSOR_LABEL[s.bands] || s.bands)}${DATA.bands[s.bands] && DATA.bands[s.bands].order.length > 3 ? ` · ${DATA.bands[s.bands].order.length} bands` : ''}</div></div>
-        ${vizSelect}
+        <div class="kv-block"><div class="k">Name</div><div class="v">${esc(isQt || an ? layerTitle(L) : PRODUCT_NAME[L.product] || L.product)}</div><div class="k">Survey</div><div class="v">${esc(layerSub(L).replace(' • ', ' · '))}</div>${an ? '' : `<div class="k">Sensor</div><div class="v">${esc(SENSOR_LABEL[s.bands] || s.bands)}${DATA.bands[s.bands] && DATA.bands[s.bands].order.length > 3 ? ` · ${DATA.bands[s.bands].order.length} bands` : ''}</div>`}</div>
+        ${an ? `<div class="tip">${esc(an.product || an.name)}${an.code ? ` · ${esc(an.code)}` : ''} — a surface interpolated from the individual sample counts of this flight</div>${tip('analytic', 'Analytics layers colourize like any mosaic: the bins, range and colour scale below apply to the heatmap on the map, and Zone Statistics averages it per zone.')}` : vizSelect}
       </section>
       ${isIndex ? (stats ? colorizationHtml(L) + `<section class="card"><div class="card-title">Display Mode</div><div class="seg"><button type="button" class="on">Imagery</button><button type="button" data-blocked="Zone Rx (Beta)">Zone Rx (Beta)</button></div></section>` + zoneStatsHtml(L, stats) : '<section class="card"><div class="muted-center">Decoding layer…</div></section>') : ''}
       <section class="card"><div class="card-title">Clip to Field Boundary</div><div class="seg"><button type="button" class="${L.clipped ? 'on' : ''}" data-act="clip" data-clip="1">Clipped</button><button type="button" class="${L.clipped ? '' : 'on'}" data-act="clip" data-clip="0">Unclipped</button></div></section>
       ${opacity}
       ${isQt ? '' : `<section class="card"><div class="card-title">Download Files</div><div class="dl-row"><div class="grow"><b>TIF File</b><span>${esc(tif || 'GeoTIFF')}</span></div><button class="dl-btn" type="button" data-act="download" data-what="tif" aria-label="Download TIF">${icon('i-download', 'ico sm')}</button></div>
         ${tip('download', 'Every mosaic downloads as a full-resolution GeoTIFF for your own GIS or agronomy software. In this sample the button sends the file to your inbox instead.')}</section>`}
+      <button class="delete-bar" type="button" disabled>Delete</button>
+    </div>`;
+  }
+  function renderSamplesLayer(L) {
+    const f = curField(); const an = analyticOf(L) || {}; const pts = shownPoints(L); const prop = sampleProp(L); const st = layerStats(L); const unit = VIZ[L.viz].unit || '';
+    const props = an.props || []; const propMenu = state.menu === 'sprop' ? `<div class="menu" role="listbox">${props.map(pr => `<div class="opt${pr.id === L.prop ? ' sel' : ''}" data-act="sprop" data-prop="${esc(pr.id)}" role="option" aria-selected="${pr.id === L.prop}">${esc(pr.label)}</div>`).join('')}</div>` : '';
+    const zs = sampleZoneStats(L);
+    return head(f.name, { back: 'field' }) + `<div class="panel-scroll">
+      <section class="card"><div class="card-title">Details</div>
+        <div class="kv-block"><div class="k">Name</div><div class="v">${esc(an.name || layerTitle(L))}</div><div class="k">Survey</div><div class="v">${esc(layerSub(L).replace(' • ', ' · '))}</div></div>
+        <div class="select${state.menu === 'sprop' ? ' open' : ''}"><span class="label">Display Property:</span><button class="value" type="button" data-act="menu" data-menu="sprop" aria-haspopup="listbox" aria-expanded="${state.menu === 'sprop'}"><span>${esc(prop.label)}</span>${icon('i-drop')}</button>${propMenu}</div>
+        <div class="kv-block"><div class="k">Sample Count</div><div class="v">${pts.length}</div><div class="k">Average</div><div class="v">${fmtV(L, st.avg)}${unit}</div></div>
+        <div class="cb-row" data-act="hideex" role="checkbox" aria-checked="${!!L.hideExcluded}" tabindex="0"><span class="cb${L.hideExcluded ? ' on' : ''}"></span><span class="grow">Hide Excluded Data Points</span></div>
+        ${tip('samples', `Every circle on the map is one sample photo, coloured by its ${esc(prop.label)}. Click a circle to open the sample viewer; <b>Display Property</b> switches the value the circles show.`)}
+      </section>
+      ${colorizationHtml(L)}
+      <section class="card"><div class="card-title"><span class="grow">Zone Statistics</span><button class="iconbtn" type="button" data-blocked="Zone statistics options" aria-label="More">${icon('i-more', 'ico sm')}</button></div>
+        ${zs.map(z => `<div class="stat-row tri"><div class="bar${z.boundary ? ' boundary' : ''}"></div><div class="grow"><b>${esc(z.name)}</b><span>${fmtAc(z.acres)} ac</span><div class="mam"><div><b>${fmtV(L, z.min)}${z.min == null ? '' : unit}</b><span>Minimum</span></div><div><b>${fmtV(L, z.avg)}${z.avg == null ? '' : unit}</b><span>Average</span></div><div><b>${fmtV(L, z.max)}${z.max == null ? '' : unit}</b><span>Maximum</span></div></div></div></div>`).join('')}
+        ${tip('szstats', 'Minimum, average and maximum of the samples that fall inside each zone — the same numbers FieldAgent prints for the individual counts.')}</section>
+      <section class="card"><div class="card-title">Download Files</div><div class="dl-sub">Layer Data</div>
+        ${(an.downloads || ['GeoJSON', 'CSV', 'Shapefile']).map(fmt => `<div class="dl-row"><div class="grow"><b>${esc(fmt)}</b></div><button class="dl-btn" type="button" data-act="download" data-what="samples" data-fmt="${esc(fmt)}" aria-label="Download ${esc(fmt)}">${icon('i-download', 'ico sm')}</button></div>`).join('')}
+        ${tip('sdownload', 'The individual counts export as GeoJSON, CSV or Shapefile — every sample with its density, emergence, row spacing and photo name.')}</section>
       <button class="delete-bar" type="button" disabled>Delete</button>
     </div>`;
   }
@@ -798,9 +883,9 @@ function mount(root, DATA, opts = {}) {
   }
   function reportDateRange() { const Ls = layers().filter(L => L.visible); const dates = Ls.map(L => L.kind === 'sat' ? satItemOf(L).date : surveyOf(L).date).map(d => ({ d, t: new Date(d.slice(6, 10), +d.slice(0, 2) - 1, +d.slice(3, 5)).getTime() })); if (!dates.length) return ''; dates.sort((a, b) => a.t - b.t); return `${dates[0].d} to ${dates[dates.length - 1].d}`; }
   // FieldAgent's report names the map after the product ("Multispectral Mosaic"), whatever visualization is on it
-  function reportLayerName(L) { if (!L) return 'Map'; if (L.kind === 'sat') return layerTitle(L); if (isPhotos(L)) return 'Photo Dots'; if (L.product.startsWith('qt_')) return layerTitle(L); return PRODUCT_NAME[L.product] || L.product; }
+  function reportLayerName(L) { if (!L) return 'Map'; if (L.kind === 'sat') return layerTitle(L); if (isPhotos(L)) return 'Photo Dots'; if (analyticOf(L) || L.product.startsWith('qt_')) return layerTitle(L); return PRODUCT_NAME[L.product] || L.product; }
   function renderReportPage() {
-    const r = state.report; const f = curField(); const top = layers().find(L => L.visible && VIZ[L.viz] && VIZ[L.viz].index && ready(L));
+    const r = state.report; const f = curField(); const top = layers().find(L => L.visible && !isSamples(L) && VIZ[L.viz] && VIZ[L.viz].index && ready(L));
     const editBox = (label, value, act, textarea) => `<div class="editbox"><span class="lab">${label}</span>${textarea ? `<textarea data-act="${act}" placeholder="Click here and start typing to add your ${label.replace('Edit ', '').toLowerCase()}">${esc(value)}</textarea>` : `<input type="text" data-act="${act}" value="${esc(value)}" placeholder="Click here and start typing to edit your ${label.replace('Edit ', '').toLowerCase()}">`}<div class="edit-actions"><button type="button" data-act="rcancel" data-what="${act}">${icon('i-close')}Cancel</button><button type="button" data-act="rsave" data-what="${act}">${icon('i-check')}Save</button></div></div>`;
     const stats = top ? layerStats(top) : null; const unit = top ? (VIZ[top.viz].unit || '') : '';
     // legend, as FieldAgent prints it: a bar of equal segments in the class colours right under the map, each segment
@@ -854,8 +939,32 @@ function mount(root, DATA, opts = {}) {
   function firstBand(L, smp, prefer) { const want = prefer || DEFAULT_BAND[surveyOf(L).bands] || 'RGB'; if (smp.img && smp.img[want]) return want; const tabs = BAND_TABS[surveyOf(L).bands] || ['RGB']; return tabs.find(b => smp.img && smp.img[b]) || Object.keys(smp.img || {})[0] || want; }
   function openPhoto(uid, idx) { const L = findLayer(uid); if (!L) return; const smp = photoSamples(L)[idx]; if (!smp) return; state.photo = { uid, idx, band: firstBand(L, smp), meta: false, sub: {}, zoom: 1 }; renderPhoto(); dirty = true; emit('photo_opened', { survey: L.survey, photo: smp.i }); }
   function closePhoto() { state.photo = null; modalEl.innerHTML = ''; dirty = true; }
+  function openSample(uid, idx) { const L = findLayer(uid); if (!L) return; const pt = samplePoints(L)[idx]; if (!pt) return; const band = pt.img && !pt.img.ANNOTATION ? Object.keys(pt.img)[0] : 'ANNOTATION'; state.photo = { uid, idx, band, kind: 'sample', meta: false, sub: {}, zoom: 1 }; renderPhoto(); dirty = true; emit('sample_opened', { index: pt.i, file: pt.file }); }
+  function renderSample(p) {
+    const L = findLayer(p.uid); const pts = samplePoints(L); const pt = pts[p.idx]; const f = curField(); const tabs = ['ANNOTATION', 'ANNOTATION 2']; const key = pt.img && pt.img[p.band]; const ex = isExcluded(L, pt);
+    const withImg = pts.filter(x => x.img).map(x => x.i); const rangeTxt = withImg.length ? `${withImg[0]}–${withImg[withImg.length - 1]}` : '';
+    modalEl.innerHTML = `<div class="photo-modal" data-act="pclose-bg"><div class="photo-dlg sample-dlg" role="dialog" aria-label="Sample viewer" data-act="pstop">
+      <button class="iconbtn white photo-close" type="button" data-act="pclose" aria-label="Close">${icon('i-close')}</button>
+      <div class="band-tabs"><div class="pill">${tabs.map(b => `<button type="button" class="${b === p.band ? 'on' : ''}${pt.img && pt.img[b] ? '' : ' dim'}" data-act="pband" data-band="${esc(b)}">${esc(b)}</button>`).join('')}</div></div>
+      <div class="photo-stage">${key && hasImg(key) ? `<img src="${DATA.img[key]}" alt="${esc(p.band)} view of sample ${pt.i}" style="transform:scale(${p.zoom})" draggable="false"><div class="zoomers"><button type="button" data-act="pzoom" data-dir="1" aria-label="Zoom in">+</button><button type="button" data-act="pzoom" data-dir="-1" aria-label="Zoom out">−</button></div>` : `<div class="missing">${pt.img ? `The ${esc(p.band)} view of this sample is not in the demo — try the other tab.` : `The annotated photos of samples ${rangeTxt} are in this demo. Use Next / Previous to reach one, or click a circle in that part of the field.`}</div>`}</div>
+      <div class="photo-side">
+        <button class="dl" type="button" data-act="download" data-what="sample" aria-label="Download">${icon('i-download', 'ico sm')}</button>
+        <h2>Image Details</h2>
+        <div class="kv2"><div class="full"><div class="k">Field</div><div class="v">${esc(f.name)}</div></div></div>
+        <h2 class="count-h">Count Details</h2>
+        <div class="kv2"><div><div class="k">Crops Detected</div><div class="v">${fmtV(L, pt.density)} / ac</div></div><div><div class="k">Row Spacing</div><div class="v">${pt.rowSpacing != null ? pt.rowSpacing.toFixed(1) + ' in' : '—'}</div></div></div>
+        <h3 class="vb-title">Validator Box Instructions</h3>
+        <p class="vb-text">Use the blue box overlay (1/1000th acre) to manually estimate count.</p>
+        <ul class="vb-list"><li>${icon('i-rotatecw', 'ico sm')}<span>Rotate to align with rows lengthwise.</span></li><li>${icon('i-move', 'ico sm')}<span>Adjust size to match the box width to the row spacing.</span></li><li>${icon('i-addcircle', 'ico sm')}<span>Drag over a row to perform a count. Count the objects inside the box.</span></li><li>${icon('i-info', 'ico sm')}<span>Multiply count by 1,000 to estimate count per acre.</span></li></ul>
+        <button class="btn-wide ghost" type="button" data-act="pexclude">${ex ? 'Include Data Point?' : 'Exclude Data Point?'}</button>
+        ${tip('sample', `Each sample is one photo of the flight, counted by Sentera's model. The blue validator box is 1/1000th of an acre: count the plants inside it by hand and multiply by 1,000 to check the number. <b>Exclude Data Point</b> drops an unrepresentative sample from the statistics.`)}
+      </div>
+      <div class="photo-nav"><button type="button" data-act="pnav" data-dir="-1" ${p.idx === 0 ? 'disabled' : ''}>${icon('i-back')}Previous</button><span>${pt.i} / ${pts.length}</span><button type="button" data-act="pnav" data-dir="1" ${p.idx >= pts.length - 1 ? 'disabled' : ''}>Next ${icon('i-tri')}</button></div>
+    </div></div>`;
+  }
   function renderPhoto() {
-    const p = state.photo; if (!p) { modalEl.innerHTML = ''; return; } const L = findLayer(p.uid); const s = surveyOf(L); const list = photoSamples(L); const smp = list[p.idx]; const d = (smp.detailsBy && smp.detailsBy[p.band]) || smp.details || {}; const meta = (smp.metaBy && smp.metaBy[p.band]) || smp.meta || {};
+    const p = state.photo; if (!p) { modalEl.innerHTML = ''; return; }
+    if (p.kind === 'sample') { renderSample(p); return; } const L = findLayer(p.uid); const s = surveyOf(L); const list = photoSamples(L); const smp = list[p.idx]; const d = (smp.detailsBy && smp.detailsBy[p.band]) || smp.details || {}; const meta = (smp.metaBy && smp.metaBy[p.band]) || smp.meta || {};
     const tabs = BAND_TABS[s.bands] || ['RGB']; const key = smp.img && smp.img[p.band]; const isMs = STRETCHED_BANDS.has(p.band); const total = (s.photos.positions || []).length || s.photos.count || list.length;
     const table = rows => `<table class="meta-table"><tr><th>Name</th><th>Value</th></tr>${(rows || []).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`;
     const subs = ['exif', 'file', 'gps', 'xmp'].map(k => `<div class="meta-sub${p.sub[k] ? ' open' : ''}" data-act="psub" data-sub="${k}" role="button" tabindex="0">${esc(k)}${icon('i-tri')}</div>${p.sub[k] ? ((meta[k] || []).length ? table(meta[k]) : '<div class="tip">Not in this sample.</div>') : ''}`).join('');
@@ -949,11 +1058,14 @@ function mount(root, DATA, opts = {}) {
     const t = e.target.closest('[data-act]'); if (!t) return; const act = t.dataset.act; const p = state.photo; const r = state.report;
     if (act === 'pclose' || (act === 'pclose-bg' && e.target === t)) { closePhoto(); }
     else if (act === 'download') { if (opts.leadCapture === false) { toast(opts.downloadMessage || 'Downloads work in your own FieldAgent account. This demo is view-only.'); emit('download_attempt', { what: t.dataset.what }); } else openLead(t.dataset.what, t); }
-    else if (act === 'pband') { p.band = t.dataset.band; p.zoom = 1; renderPhoto(); emit('photo_band_changed', { band: p.band }); }
+    else if (act === 'pband') { p.band = t.dataset.band; p.zoom = 1; renderPhoto(); emit(p.kind === 'sample' ? 'sample_tab_changed' : 'photo_band_changed', { band: p.band }); }
     else if (act === 'pmeta') { p.meta = !p.meta; renderPhoto(); emit('photo_metadata_toggled', { open: p.meta }); }
     else if (act === 'psub') { p.sub[t.dataset.sub] = !p.sub[t.dataset.sub]; renderPhoto(); }
     else if (act === 'pzoom') { p.zoom = clamp(p.zoom * (t.dataset.dir === '1' ? 1.4 : 1 / 1.4), 1, 4); const im = modalEl.querySelector('.photo-stage img'); if (im) im.style.transform = `scale(${p.zoom})`; emit('photo_zoomed', { zoom: p.zoom }); }
-    else if (act === 'pnav') { const L = findLayer(p.uid); const n = photoSamples(L).length; p.idx = clamp(p.idx + (+t.dataset.dir), 0, n - 1); const smp = photoSamples(L)[p.idx]; if (!(smp.img && smp.img[p.band])) p.band = firstBand(L, smp); p.zoom = 1; renderPhoto(); dirty = true; emit('photo_navigated', { index: p.idx }); }
+    else if (act === 'pnav') { const L = findLayer(p.uid); const list = isSamples(L) ? samplePoints(L) : photoSamples(L); const n = list.length; p.idx = clamp(p.idx + (+t.dataset.dir), 0, n - 1); const smp = list[p.idx];
+      if (isSamples(L)) { if (smp.img && !smp.img[p.band]) p.band = Object.keys(smp.img)[0]; } else if (!(smp.img && smp.img[p.band])) p.band = firstBand(L, smp);
+      p.zoom = 1; renderPhoto(); dirty = true; emit(isSamples(L) ? 'sample_navigated' : 'photo_navigated', { index: isSamples(L) ? smp.i : p.idx }); }
+    else if (act === 'pexclude') { const L = findLayer(p.uid); const pt = samplePoints(L)[p.idx]; if (pt) { const k = exKey(L, pt); if (state.excluded[k]) delete state.excluded[k]; else state.excluded[k] = true; renderPhoto(); render(true); emit('sample_excluded', { index: pt.i, excluded: !!state.excluded[k] }); } }
     else if (act === 'rtitle-edit') { if (r.editTitle) { const inp = reportEl.querySelector('[data-act="rtitle"]'); if (inp && inp.value.trim()) r.title = inp.value.trim(); } r.editTitle = !r.editTitle; render(true); if (!r.editTitle) emit('report_edited', { what: 'rtitle' }); else emit('report_title_editing'); }
     else if (act === 'rsummary-edit') { r.editSummary = true; render(true); }
     else if (act === 'rimg-edit') { r.editImg = true; render(true); }
@@ -981,7 +1093,9 @@ function mount(root, DATA, opts = {}) {
     else if (act === 'zonedone') { goto('field'); flyTo(fitField(), 600); emit('zone_done'); }
     else if (act === 'showmore') { state.showMore = !state.showMore; render(true); emit('show_more_toggled', { open: state.showMore }); }
     else if (act === 'src') { state.sources[t.dataset.src] = !state.sources[t.dataset.src]; render(true); emit('source_toggled', { source: t.dataset.src, on: state.sources[t.dataset.src] }); if (t.dataset.src === 'satellite' && state.sources.satellite) emit('satellite_opened'); }
-    else if (act === 'pick') { const { survey, product } = t.dataset; const i = layers().findIndex(l => l.kind === 'drone' && l.survey === survey && l.product === product); if (i >= 0) layers().splice(i, 1); else { const nl = newLayer(state.fid, { kind: 'drone', survey, product }); layers().unshift(nl); ensure(nl); emit('layer_added', { kind: 'drone', survey, product }); } render(true); }
+    else if (act === 'pick') { const { survey, product } = t.dataset; const kind = t.dataset.kind || 'drone'; const i = layers().findIndex(l => l.kind === kind && l.survey === survey && l.product === product); if (i >= 0) layers().splice(i, 1); else { const nl = newLayer(state.fid, { kind, survey, product }); layers().unshift(nl); ensure(nl); emit('layer_added', { kind, survey, product }); } render(true); }
+    else if (act === 'sprop') { const pr = ((analyticOf(L) || {}).props || []).find(x => x.id === t.dataset.prop); if (pr) { L.prop = pr.id; L.viz = pr.viz; L.col = defaultCol(L); } state.menu = null; render(true); emit('sample_prop_changed', { prop: L.prop }); }
+    else if (act === 'hideex') { L.hideExcluded = !L.hideExcluded; render(true); emit('hide_excluded_toggled', { on: !!L.hideExcluded }); }
     else if (act === 'pickphotos') { const { survey } = t.dataset; const i = layers().findIndex(l => l.kind === 'photos' && l.survey === survey); if (i >= 0) layers().splice(i, 1); else { layers().unshift(newLayer(state.fid, { kind: 'photos', survey, product: 'photos' })); emit('layer_added', { kind: 'photos', survey }); } render(true); }
     else if (act === 'picksat') { const { date, product } = t.dataset; const i = layers().findIndex(l => l.kind === 'sat' && l.date === date && l.product === product); if (i >= 0) layers().splice(i, 1); else { const nl = newLayer(state.fid, { kind: 'sat', date, product, viz: product }); layers().unshift(nl); ensure(nl); emit('layer_added', { kind: 'satellite', date, product }); } render(true); }
     else if (act === 'detail') { if (e.target.closest('[data-handle]')) return; state.detailUid = +t.dataset.uid; state.view = 'layer'; state.menu = null; state.binTable = false; render(); emit('layer_details_opened', { layer: layerTitle(findLayer(state.detailUid)) }); }
@@ -1058,8 +1172,9 @@ function mount(root, DATA, opts = {}) {
 
   // ---------- boot ----------
   resize(); render(); requestAnimationFrame(frame);
-  const f0 = FIELDS[0]; const s0 = f0.surveys.find(x => hasImg(`${f0.id}_${x.key}_ndvi`)) || f0.surveys[0];
-  const first = [...BASEMAPS.map(b => b.key), `${f0.id}_${s0.key}_ndvi`, `${f0.id}_${s0.key}_rgb`, `${f0.id}_${s0.key}_mask`].filter(hasImg);
+  const f0 = FIELD[opts.startField] || FIELDS[0]; state.fid = f0.id; const s0 = f0.surveys.find(x => hasImg(`${f0.id}_${x.key}_ndvi`)) || f0.surveys[0];
+  const touches = (a, b) => !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1);
+  const first = [...BASEMAPS.filter(b => touches(b.rect, f0.rect)).map(b => b.key), `${f0.id}_${s0.key}_ndvi`, `${f0.id}_${s0.key}_rgb`, `${f0.id}_${s0.key}_mask`].filter(hasImg);
   jumpTo(fitField(f0.id));
   const booted = Promise.all(first.map(loadImage)).then(() => {
     const l = $('loading'); if (l) l.remove();
@@ -1077,8 +1192,8 @@ function mount(root, DATA, opts = {}) {
     if (open) { state.detailUid = L.uid; state.view = 'layer'; state.menu = null; state.binTable = false; }
     render(); return L;
   }
-  return { state, opts, openField, openFields, flyTo, openPhoto, openLead, render, goto, toast, layers, addLayer, setCollapsed, defaultLayers, root, panel, FIELD, emit, fitField, layerTitle, ready: booted,
-    ui: { icon, esc, head, tip, fmtAc, curField, blockedMsg, SENSOR_LABEL, $ } };
+  return { state, opts, openField, openFields, flyTo, openPhoto, openSample, openLead, render, goto, toast, layers, addLayer, setCollapsed, defaultLayers, root, panel, FIELD, emit, fitField, layerTitle, ready: booted,
+    ui: { icon, esc, head, tip, fmtAc, fmtV, curField, blockedMsg, SENSOR_LABEL, $, analyticOf, samplePoints } };
 }
 return { mount };
 })();

@@ -100,7 +100,7 @@ window.FieldAgentTour = (function () {
       const rr = root.getBoundingClientRect(); let r = el.getBoundingClientRect();
       if (el.closest('.row-actions') && r.width === 0) { const row = el.closest('.layer-row'); if (row) r = row.getBoundingClientRect(); }
       // bring the target into view once per step (before clipping, or an off-screen target would never scroll)
-      const sc = el.closest('.panel-scroll');
+      const sc = el.closest('.panel-scroll, .photo-side');
       if (scrolledFor !== i && sc) { scrolledFor = i; try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { el.scrollIntoView(); } }
       // clip to the scroll container so the ring never floats outside the panel
       if (sc) { const cr = sc.getBoundingClientRect(); if (r.bottom < cr.top + 4 || r.top > cr.bottom - 4) { spot.hidden = true; return; } }

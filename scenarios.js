@@ -263,5 +263,28 @@ window.FA_SCENARIOS = (function () {
     finish: { text: 'Analytics are ordered from a survey flown to the product’s specification — usually a low-altitude spot-scout pattern. Results arrive as map layers and downloadable data.', links: [{ label: 'Order analytics', path: PAGE.analytics }, { label: 'Stand Count', path: PAGE.standcount }] },
   };
 
+  // ---- Sentera Demo Account fields ----
+  const SC = 'f3', SC_SURVEY = 'sc0610';   // Field Scale Stand Count (71301-00), spot-scout flight of 06-10-2022, 41 samples
+  const samplesLayer = app => app.layers().find(l => l.kind === 'samples');
+  S['stand-count'] = {
+    id: 'stand-count', title: 'Read a stand count', page: PAGE.standcount, field: SC, seedLayers: false,
+    intro: 'This field was flown for a <b>Field Scale Stand Count</b>: a spot-scout flight of 41 photos, each counted by Sentera’s model. The results arrive as two map layers — an interpolated heatmap and the individual samples.',
+    steps: [
+      openAdd,
+      { text: 'Under the flight of <b>06-10-2022</b>, turn on <b>Stand Count Heatmap</b>. Analytics flights list only the products that were produced for them.', target: `[data-act="pick"][data-survey="${SC_SURVEY}"][data-product="standheat"]`, event: 'layer_added', match: d => d.product === 'standheat' },
+      { text: 'Turn on <b>Stand Count - Individual</b> as well — the 41 counted photos as points.', target: `[data-act="pick"][data-survey="${SC_SURVEY}"][data-product="standpts"]`, event: 'layer_added', match: d => d.product === 'standpts' },
+      back,
+      { text: 'Hover the <b>Stand Count Heatmap</b> row and click the <b>eye</b> to hide it. The circles underneath are the individual samples; each shows the plant density counted in one photo, colored by the same scale.', target: '.layer-row[data-index="1"] [data-act="toggle"]', highlight: '.layer-row[data-index="1"]', event: 'layer_toggled', match: d => !d.visible },
+      { text: 'Click the <b>Stand Count - Individual</b> layer name to open its details.', target: '.layer-row[data-index="0"]', event: 'layer_details_opened' },
+      { text: 'Open <b>Display Property</b> and switch to <b>Emergence (%)</b>: the same samples expressed as the share of the planted population that emerged.', target: '[data-act="menu"][data-menu="sprop"]', event: 'sample_prop_changed', match: d => d.prop === 'emergence', showMe: pickMenu('[data-act="menu"][data-menu="sprop"]', '[data-act="sprop"][data-prop="emergence"]') },
+      { text: 'Switch back to <b>Plant Density (per acre)</b>. Below the colorization, <b>Zone Statistics</b> lists the minimum, average and maximum of the samples inside each zone.', target: '[data-act="menu"][data-menu="sprop"]', event: 'sample_prop_changed', match: d => d.prop === 'density', showMe: pickMenu('[data-act="menu"][data-menu="sprop"]', '[data-act="sprop"][data-prop="density"]') },
+      { text: 'Click any <b>circle on the map</b> to open that sample in the viewer.', demo: {}, event: 'sample_opened', showMe: app => { const L = samplesLayer(app); if (L) app.openSample(L.uid, 17); }, note: 'The demo carries the annotated photos of samples 17–24 — the top of the western column.' },
+      { text: 'Switch to <b>ANNOTATION 2</b>: the same photo with the rows and every counted plant marked.', target: '[data-act="pband"][data-band="ANNOTATION 2"]', event: 'sample_tab_changed', match: d => d.band === 'ANNOTATION 2' },
+      { text: 'Use <b>Next</b> to step through the samples. The panel shows <b>Crops Detected</b> and <b>Row Spacing</b> for each photo, and the blue validator box lets you check a count by hand.', target: '[data-act="pnav"][data-dir="1"]', event: 'sample_navigated' },
+      { text: 'If a photo is not representative — a headland, a wet spot — <b>Exclude Data Point</b> drops it from the averages and zone statistics.', target: '[data-act="pexclude"]', event: 'sample_excluded', match: d => d.excluded },
+    ],
+    finish: { text: 'Heatmap for the pattern, individual samples for the evidence: that is how a stand count is read. The individual counts download as GeoJSON, CSV or Shapefile from the layer panel, and Create Report captures whichever layer is on the map.', links: [{ label: 'Stand Count', path: PAGE.standcount }, { label: 'Order analytics', path: PAGE.analytics }, { label: 'Create a report', path: PAGE.report }] },
+  };
+
   return S;
 })();

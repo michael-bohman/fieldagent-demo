@@ -85,6 +85,8 @@
     <symbol id="i-people" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></symbol>
     <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M16.48 2.52c3.27 1.55 5.61 4.72 5.97 8.48h1.5C23.44 4.84 18.29 0 12 0l-.66.03 3.81 3.81 1.33-1.32zm-6.73-1.04c-.59-.59-1.54-.59-2.12 0L1.75 7.36c-.59.59-.59 1.54 0 2.12l12.77 12.77c.59.59 1.54.59 2.12 0l5.88-5.88c.59-.59.59-1.54 0-2.12L9.75 1.48zm4.6 19.44L2.81 9.43l5.88-5.88 11.54 11.54-5.88 5.87zM7.52 21.48C4.25 19.94 1.91 16.76 1.55 13H.05C.56 19.16 5.71 24 12 24l.66-.03-3.81-3.81-1.33 1.32z"/></symbol>
   </defs>
+<symbol id="i-heatmap" viewBox="0 0 24 24"><path d="M3 3v18h18V3H3zm16.2 9h-3.6v3.6h3.6v3.6h-3.6v-3.6H12v3.6H8.4v-3.6H4.8V12h3.6V8.4H4.8V4.8h3.6v3.6H12V4.8h3.6v3.6h3.6V12zm-3.6-3.6V12H12V8.4h3.6zM12 12v3.6H8.4V12H12z"/></symbol>
+<symbol id="i-samples" viewBox="0 0 24 24"><path d="M19.4 3a1.6 1.6 0 0 0-1.6 1.6c0 .65.44 1.1 1 1.36-.52 2.2-2.5 4.4-4.67 4.96l-.92.23A1.55 1.55 0 0 0 12 10.4c-.81 0-1.43.64-1.52 1.42l-.37.1c-2.33.6-4.32 3.1-5.36 5.96l-.17-.04A1.6 1.6 0 1 0 6.18 19.4c0-.43-.19-.8-.47-1.1.92-2.6 2.72-4.85 4.67-5.36l.4-.1c.28.42.68.73 1.22.73.81 0 1.43-.63 1.52-1.42l.9-.23c2.62-.68 5.01-3.31 5.52-5.99A1.6 1.6 0 1 0 19.4 3zm0 1.06a.53.53 0 1 1 0 1.06.53.53 0 0 1 0-1.06zM12 11.47a.53.53 0 1 1 0 1.06.53.53 0 0 1 0-1.06zm-7.4 7.4a.53.53 0 1 1 0 1.06.53.53 0 0 1 0-1.06z"/></symbol>
 </svg>
 <header class="demo-bar">
   <span class="brand"><svg aria-hidden="true"><use href="#i-logo" fill="#799B3E"/></svg>FieldAgent demo</span>
@@ -124,7 +126,7 @@
     if (tour) { tour.destroy(); tour = null; }
     if (!app) {
       app = FieldAgentDemo.mount(root, window.FA_DATA, {
-        fullViewport: false, seedLayers: sc.seedLayers !== false, tips: false, leadCapture: false,
+        fullViewport: false, seedLayers: sc.seedLayers !== false, tips: false, leadCapture: false, startField: sc.field,
         blockedMessage: what => `${what} is not part of this demo. In FieldAgent it works from your own account.`,
         downloadMessage: 'Downloads work in your FieldAgent account. This demo is view-only.',
         uploadMessage: 'Uploads happen in your FieldAgent account. This demo is view-only.',
