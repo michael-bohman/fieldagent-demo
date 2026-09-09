@@ -80,12 +80,17 @@ window.FieldAgentTour = (function () {
     };
     const rootRect = () => root.getBoundingClientRect();
 
+    // Links to the guide are plain anchors. Inside the GitBook block the demo is a cross-origin frame, and GitBook only
+    // listens to @webframe.* messages from its own integration hosts, so a link that targets the top window is the way
+    // to take the reader to another page (the frame is not sandboxed, and the click supplies the user activation the
+    // browser requires). Full size, the guide opens in a new tab so the demo stays put.
     function docsLink(link) {
-      const path = link.path || '';
-      if (/^https?:/.test(path)) return `<a class="fa-tour-link" href="${esc(path)}" target="_blank" rel="noopener">${ICON.open}${esc(link.label)}</a>`;
-      if (framed) return `<button type="button" class="fa-tour-link" data-tour="nav" data-path="${esc(path)}">${ICON.book}${esc(link.label)}</button>`;
-      return `<a class="fa-tour-link" href="${esc(docsBase + path)}" target="_blank" rel="noopener">${ICON.book}${esc(link.label)}</a>`;
+      const path = link.path || ''; const external = /^https?:/.test(path);
+      const href = external ? path : docsBase + path;
+      return `<a class="fa-tour-link" href="${esc(href)}" target="${framed && !external ? '_top' : '_blank'}" rel="noopener">${external ? ICON.open : ICON.book}${esc(link.label)}</a>`;
     }
+    // a demo never links to the page it sits on — that is where the reader already is (or, full size, the Back to the guide link)
+    const guideLinks = list => (list || []).filter(l => l && l.path && l.path !== scenario.page);
 
     function render() {
       if (destroyed) return;
@@ -95,7 +100,7 @@ window.FieldAgentTour = (function () {
       if (!steps.length) {
         card.innerHTML = `<div class="fa-tour-head"><span class="fa-tour-kicker">Try it</span><span class="fa-tour-title">${esc(scenario.title)}</span></div>
           <div class="fa-tour-text">${scenario.intro || ''}</div>
-          ${(scenario.finish && scenario.finish.links || []).length ? `<div class="fa-tour-links">${scenario.finish.links.map(docsLink).join('')}</div>` : ''}
+          ${guideLinks(scenario.finish && scenario.finish.links).length ? `<div class="fa-tour-links">${guideLinks(scenario.finish.links).map(docsLink).join('')}</div>` : ''}
           <button type="button" class="fa-tour-x" data-tour="hide" aria-label="Hide">×</button>`;
         card.classList.remove('done');
         return;
@@ -105,7 +110,7 @@ window.FieldAgentTour = (function () {
         card.classList.add('done');
         card.innerHTML = `<div class="fa-tour-head"><span class="fa-tour-kicker">${ICON.check} Done</span><span class="fa-tour-title">${esc(scenario.title)}</span></div>
           <div class="fa-tour-text">${f.text || 'That is the whole workflow. Keep exploring the demo, or go back to the guide.'}</div>
-          ${(f.links || []).length ? `<div class="fa-tour-links">${f.links.map(docsLink).join('')}</div>` : ''}
+          ${guideLinks(f.links).length ? `<div class="fa-tour-links">${guideLinks(f.links).map(docsLink).join('')}</div>` : ''}
           <div class="fa-tour-actions"><button type="button" class="fa-tour-btn ghost" data-tour="restart">${ICON.restart}Start again</button><button type="button" class="fa-tour-btn ghost" data-tour="replay">${ICON.playall}Play it again</button></div>
           <button type="button" class="fa-tour-x" data-tour="hide" aria-label="Hide">×</button>`;
         if (swap) animateIn();
@@ -369,7 +374,6 @@ window.FieldAgentTour = (function () {
       else if (a === 'replay') playAll(true);
       else if (a === 'pause') pauseAll();
       else if (a === 'hide') { if (autoplay) pauseAll(); card.classList.add('hidden'); badge.classList.add('show'); }
-      else if (a === 'nav') { if (framed) window.parent.postMessage({ action: { action: '@webframe.navigate', path: b.dataset.path } }, '*'); else window.open(docsBase + b.dataset.path, '_blank', 'noopener'); }
     });
     badge.addEventListener('click', () => { card.classList.remove('hidden'); badge.classList.remove('show'); });
 

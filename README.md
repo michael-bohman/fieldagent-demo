@@ -97,7 +97,9 @@ S['zones'] = {
   of the FieldAgent space on support.senterasensors.com (today `/fieldagent-documentation-updates`; change that one
   constant when the content moves). GitBook forms a page's URL from the SUMMARY.md group heading and the file name —
   `## View and analyze` + `view/map-layers.md` → `/view-and-analyze/map-layers` — so the folder name is not part of it.
-  Inside the GitBook block the links navigate the site (`@webframe.navigate` with that path); full size they open the
+  A demo never links to the page it sits on. The links are plain anchors: inside the GitBook block they target the
+  top window (GitBook's webframe is not sandboxed, and it ignores `@webframe.*` messages from frames that are not on
+  its own integration hosts, so a message-based navigation cannot work from GitHub Pages); full size they open the
   page in a new tab.
 
 Every control the reader could use in the real app works the same way in the copy: the guide only watches and

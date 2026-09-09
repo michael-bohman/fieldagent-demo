@@ -97,7 +97,9 @@
 
   boot(id);
 
-  // GitBook webframe protocol: announce readiness, ask for a 16:10 frame, accept a scenario from the block's data
+  // GitBook webframe protocol: announce readiness, ask for a 16:10 frame, accept a scenario from the block's data.
+  // (GitBook only listens to frames on its own integration hosts, so from GitHub Pages these are no-ops; the block's
+  // aspectRatio prop sets the frame size and ?s= carries the scenario. Kept for a host that does listen.)
   send({ action: '@webframe.ready' });
   send({ action: '@webframe.resize', size: { aspectRatio: 16 / 10 } });
   window.addEventListener('message', e => {
